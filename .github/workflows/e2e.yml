@@ -36,12 +36,12 @@ jobs:
 
       - name: Install Android NDK
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.13004108"
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358"
           ls "$ANDROID_HOME/ndk/"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
           # Write local.properties so AGP and rust-android-gradle can find the SDK/NDK
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/28.0.13004108" >> local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/28.2.13676358" >> local.properties
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
