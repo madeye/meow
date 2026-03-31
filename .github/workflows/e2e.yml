@@ -56,7 +56,10 @@ jobs:
       - name: Install ssserver
         run: |
           SS_VERSION="1.21.2"
-          curl -L "https://github.com/shadowsocks/shadowsocks-rust/releases/download/v${SS_VERSION}/shadowsocks-v${SS_VERSION}.x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C /usr/local/bin
+          INSTALL_BIN="$HOME/.local/bin"
+          mkdir -p "$INSTALL_BIN"
+          curl -L "https://github.com/shadowsocks/shadowsocks-rust/releases/download/v${SS_VERSION}/shadowsocks-v${SS_VERSION}.x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C "$INSTALL_BIN"
+          echo "$INSTALL_BIN" >> "$GITHUB_PATH"
 
       - name: Gradle cache
         uses: actions/cache@v4
@@ -70,9 +73,10 @@ jobs:
       - name: Build debug APK (x86_64)
         run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=debug
 
-      - name: Download static curl for x86_64
+      - name: Download Android static curl for x86_64
         run: |
-          curl -L -o /tmp/curl-x86_64 https://github.com/moparisthebest/static-curl/releases/latest/download/curl-amd64
+          CURL_VERSION="8.7.1"
+          curl -L -o /tmp/curl-x86_64 "https://github.com/moparisthebest/static-curl/releases/download/v${CURL_VERSION}/curl-android-x86_64"
           chmod +x /tmp/curl-x86_64
 
       - name: Enable KVM
@@ -87,7 +91,6 @@ jobs:
         with:
           path: |
             ~/.android/avd/*
-            ~/.android/adb*
           key: avd-api-35-${{ runner.os }}
 
       - name: Create AVD and generate snapshot
@@ -115,7 +118,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: ADB=$ANDROID_HOME/platform-tools/adb EMULATOR=$ANDROID_HOME/emulator/emulator SSSERVER=/usr/local/bin/ssserver ./test-e2e.sh
+          script: ADB=$ANDROID_HOME/platform-tools/adb EMULATOR=$ANDROID_HOME/emulator/emulator SSSERVER=$HOME/.local/bin/ssserver ./test-e2e.sh
 
       - name: Upload screenshots
         if: failure()
