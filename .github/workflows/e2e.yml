@@ -85,9 +85,6 @@ jobs:
 
       - name: Run E2E tests
         env:
-          ADB: ${{ env.ANDROID_HOME }}/platform-tools/adb
-          EMULATOR: ${{ env.ANDROID_HOME }}/emulator/emulator
-          SSSERVER: ${{ env.HOME }}/.cargo/bin/ssserver
           SKIP_EMULATOR_BOOT: "true"
           CURL_STATIC: /tmp/curl-x86_64
           APK: mobile/build/outputs/apk/debug/mobile-x86_64-debug.apk
@@ -99,7 +96,11 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: ./test-e2e.sh
+          script: |
+            ADB="$ANDROID_HOME/platform-tools/adb" \
+            EMULATOR="$ANDROID_HOME/emulator/emulator" \
+            SSSERVER="$HOME/.cargo/bin/ssserver" \
+            ./test-e2e.sh
 
       - name: Upload screenshots
         if: failure()
