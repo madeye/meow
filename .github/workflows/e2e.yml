@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  e2e:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -54,14 +54,6 @@ jobs:
       - name: Install cargo-ndk
         run: command -v cargo-ndk || cargo install cargo-ndk
 
-      - name: Install ssserver
-        run: |
-          SS_VERSION="1.21.2"
-          INSTALL_BIN="$HOME/.local/bin"
-          mkdir -p "$INSTALL_BIN"
-          curl -L "https://github.com/shadowsocks/shadowsocks-rust/releases/download/v${SS_VERSION}/shadowsocks-v${SS_VERSION}.x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C "$INSTALL_BIN"
-          echo "$INSTALL_BIN" >> "$GITHUB_PATH"
-
       - name: Gradle cache
         uses: actions/cache@v4
         with:
@@ -73,6 +65,35 @@ jobs:
 
       - name: Build debug APK (x86_64)
         run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: mobile/build/outputs/apk/debug/mobile-x86_64-debug.apk
+          retention-days: 1
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: debug-apk
+          path: mobile/build/outputs/apk/debug
+
+      - name: Install ssserver
+        run: |
+          SS_VERSION="1.21.2"
+          INSTALL_BIN="$HOME/.local/bin"
+          mkdir -p "$INSTALL_BIN"
+          curl -L "https://github.com/shadowsocks/shadowsocks-rust/releases/download/v${SS_VERSION}/shadowsocks-v${SS_VERSION}.x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C "$INSTALL_BIN"
+          echo "$INSTALL_BIN" >> "$GITHUB_PATH"
 
       - name: Download Android static curl for x86_64
         run: |
