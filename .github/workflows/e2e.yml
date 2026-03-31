@@ -115,11 +115,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: |
-            ADB="$ANDROID_HOME/platform-tools/adb" \
-            EMULATOR="$ANDROID_HOME/emulator/emulator" \
-            SSSERVER="/usr/local/bin/ssserver" \
-            ./test-e2e.sh
+          script: ADB=$ANDROID_HOME/platform-tools/adb EMULATOR=$ANDROID_HOME/emulator/emulator SSSERVER=/usr/local/bin/ssserver ./test-e2e.sh
 
       - name: Upload screenshots
         if: failure()
