@@ -1,0 +1,121 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: cd flutter_module && flutter pub get
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.13004108"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Build debug APK (arm64)
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+        run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release
+
+      - name: Install ssserver
+        run: cargo install shadowsocks-rust --features "server"
+
+      - name: Download static curl for aarch64
+        run: |
+          curl -L -o /tmp/curl-aarch64 https://github.com/moparisthebest/static-curl/releases/latest/download/curl-aarch64
+          chmod +x /tmp/curl-aarch64
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api-35-${{ runner.os }}
+
+      - name: Create AVD and generate snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run E2E tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            export ADB="$ANDROID_HOME/platform-tools/adb"
+            export SSSERVER="$HOME/.cargo/bin/ssserver"
+            export SKIP_EMULATOR_BOOT=true
+            export CURL_STATIC=/tmp/curl-aarch64
+            export APK=mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk
+            ./test-e2e.sh
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: screen_*.png
+          if-no-files-found: ignore
+
+      - name: Upload logcat
+        if: failure()
+        run: |
+          $ANDROID_HOME/platform-tools/adb logcat -d > logcat.txt 2>/dev/null || true
+        continue-on-error: true
+
+      - name: Upload logcat artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logcat
+          path: logcat.txt
+          if-no-files-found: ignore
