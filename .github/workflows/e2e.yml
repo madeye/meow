@@ -10,7 +10,7 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -34,22 +34,35 @@ jobs:
         with:
           targets: x86_64-linux-android
 
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-ndk
+            ~/.cargo/bin/ssserver
+            ~/.cargo/bin/sslocal
+            ~/.cargo/bin/ssmanager
+            ~/.cargo/bin/ssservice
+            ~/.cargo/bin/ssurl
+            core/src/main/rust/mihomo-android-ffi/target
+          key: cargo-${{ runner.os }}-x86_64-${{ hashFiles('core/src/main/rust/**/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-x86_64-
+
       - name: Install Android NDK
         run: |
-          # Install all NDK versions needed by submodules
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" "ndk;27.0.12077973"
-          ls "$ANDROID_HOME/ndk/"
-          # Only set sdk.dir — let each module use its own android.ndkVersion
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk
+
+      - name: Install ssserver
+        run: command -v ssserver || cargo install shadowsocks-rust --features "server"
 
       - name: Build debug APK (x86_64)
         run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=release
-
-      - name: Install ssserver
-        run: cargo install shadowsocks-rust --features "server"
 
       - name: Download static curl for x86_64
         run: |
