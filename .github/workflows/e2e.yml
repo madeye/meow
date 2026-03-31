@@ -94,6 +94,7 @@ jobs:
           disable-animations: true
           script: |
             export ADB="$ANDROID_HOME/platform-tools/adb"
+            export EMULATOR="$ANDROID_HOME/emulator/emulator"
             export SSSERVER="$HOME/.cargo/bin/ssserver"
             export SKIP_EMULATOR_BOOT=true
             export CURL_STATIC=/tmp/curl-x86_64
