@@ -84,6 +84,13 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       - name: Run E2E tests
+        env:
+          ADB: ${{ env.ANDROID_HOME }}/platform-tools/adb
+          EMULATOR: ${{ env.ANDROID_HOME }}/emulator/emulator
+          SSSERVER: ${{ env.HOME }}/.cargo/bin/ssserver
+          SKIP_EMULATOR_BOOT: "true"
+          CURL_STATIC: /tmp/curl-x86_64
+          APK: mobile/build/outputs/apk/debug/mobile-x86_64-debug.apk
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -92,14 +99,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: |
-            export ADB="$ANDROID_HOME/platform-tools/adb"
-            export EMULATOR="$ANDROID_HOME/emulator/emulator"
-            export SSSERVER="$HOME/.cargo/bin/ssserver"
-            export SKIP_EMULATOR_BOOT=true
-            export CURL_STATIC=/tmp/curl-x86_64
-            export APK=mobile/build/outputs/apk/debug/mobile-x86_64-debug.apk
-            ./test-e2e.sh
+          script: ./test-e2e.sh
 
       - name: Upload screenshots
         if: always()
