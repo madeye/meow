@@ -68,7 +68,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build debug APK (x86_64)
-        run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=release
+        run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=debug
 
       - name: Download static curl for x86_64
         run: |
