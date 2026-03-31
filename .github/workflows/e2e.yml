@@ -37,14 +37,15 @@ jobs:
       - name: Install Android NDK
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.13004108"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
       - name: Build debug APK (x86_64)
         env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
-        run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=release
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: ./gradlew :mobile:assembleDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=release -Pandroid.ndkVersion=28.0.13004108
 
       - name: Install ssserver
         run: cargo install shadowsocks-rust --features "server"
