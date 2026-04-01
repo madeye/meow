@@ -145,8 +145,8 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
                 if written >= 0 {
                     break;
                 }
-                let errno = unsafe { *libc::__errno_location() };
-                if errno == libc::EAGAIN && retries < 3 {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::EAGAIN) && retries < 3 {
                     retries += 1;
                     tokio::task::yield_now().await;
                     continue;
