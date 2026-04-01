@@ -6,6 +6,8 @@ local.properties
 
 # Rust
 core/src/main/rust/mihomo-android-ffi/target/
+core/src/main/rust/mihomo-proxy-patched/target/
+core/src/main/rust/mihomo-proxy-patched/Cargo.lock
 
 # Android
 *.apk
