@@ -100,15 +100,11 @@ command -v "$SSSERVER" &>/dev/null || [[ -f "$SSSERVER" ]] || fail "ssserver not
 [[ -x "$ADB" ]] || command -v "$ADB" &>/dev/null || fail "adb not found"
 info "All prerequisites OK."
 
-# Step 2: ssserver (plain SS, no plugin — mihomo-rust can't spawn v2ray-plugin on Android)
+# Steps 2-4: Start ssserver, subscription server, and emulator in parallel
 info "Step 2: Starting ssserver on $SS_ADDR ..."
 "$SSSERVER" -s "$SS_ADDR" -k "$SS_PASSWORD" -m "$SS_METHOD" -U &
 SSSERVER_PID=$!
-sleep 1
-kill -0 "$SSSERVER_PID" 2>/dev/null || fail "ssserver failed to start"
-info "ssserver running (PID $SSSERVER_PID)"
 
-# Step 3: Subscription HTTP server
 info "Step 3: Starting subscription HTTP server on port $SUB_PORT ..."
 mkdir -p /tmp/test-sub
 cat > /tmp/test-sub/config.yaml <<SUBEOF
@@ -140,11 +136,8 @@ SUBEOF
 cd /tmp/test-sub && python3 -m http.server "$SUB_PORT" &
 HTTPD_PID=$!
 cd "$SCRIPT_DIR"
-sleep 1
-kill -0 "$HTTPD_PID" 2>/dev/null || fail "HTTP server failed to start"
-info "Subscription HTTP server running (PID $HTTPD_PID)"
 
-# Step 4: Boot emulator
+# Boot emulator in parallel with server startup checks
 if [[ "${SKIP_EMULATOR_BOOT:-}" == "true" ]]; then
     info "Step 4: Skipping emulator boot"
     "$ADB" wait-for-device
@@ -154,10 +147,16 @@ else
     EMU_PID=$!
     info "Emulator PID: $EMU_PID"
     wait_for_boot
-    sleep 5
+    sleep 3
     "$ADB" shell input keyevent KEYCODE_HOME
-    sleep 2
+    sleep 1
 fi
+
+# Now verify servers started (they've had plenty of time during emulator boot)
+kill -0 "$SSSERVER_PID" 2>/dev/null || fail "ssserver failed to start"
+info "ssserver running (PID $SSSERVER_PID)"
+kill -0 "$HTTPD_PID" 2>/dev/null || fail "HTTP server failed to start"
+info "Subscription HTTP server running (PID $HTTPD_PID)"
 
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
@@ -182,10 +181,18 @@ info "APK installed."
 info "Step 6: Configuring subscription..."
 info "  Launching app to initialize databases..."
 "$ADB" shell am start -W -n "$PKG/.MainActivity"
-sleep 8
+# Poll for app to create database dir instead of fixed sleep
+for i in $(seq 1 20); do
+    if "$ADB" shell "run-as $PKG test -d databases && echo yes" 2>/dev/null | grep -q yes; then
+        info "  Database dir created (attempt $i)"
+        break
+    fi
+    sleep 1
+done
+sleep 2
 screenshot "01_init"
 "$ADB" shell am force-stop "$PKG"
-sleep 2
+sleep 1
 
 info "  Creating database with subscription profile on host..."
 SUB_YAML=$(cat /tmp/test-sub/config.yaml)
@@ -342,65 +349,101 @@ fi
 # Step 8: Verify connectivity
 ensure_emulator
 info "Step 8: Verifying VPN connection..."
-sleep 8
+
+# Poll for tun0 instead of fixed sleep — this is the first sign VPN is up
+TUN_READY=false
+for i in $(seq 1 20); do
+    if "$ADB" shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
+        TUN_READY=true
+        info "  TUN interface ready (waited ${i}s)"
+        break
+    fi
+    sleep 1
+done
+# Give the proxy stack a moment to initialize after tun0 is up
+if [[ "$TUN_READY" == "true" ]]; then
+    sleep 3
+fi
 screenshot "05_vpn_status"
 
 PASS=0
 TOTAL=5
-TEST_NAMES=()
-TEST_RESULTS=()
-TEST_DETAILS=()
+TEST_NAMES=("TUN interface" "DNS resolution" "TCP 1.1.1.1:80" "TCP 8.8.8.8:443" "HTTP generate_204")
+TEST_RESULTS=("FAIL" "FAIL" "FAIL" "FAIL" "FAIL")
+TEST_DETAILS=("tun0 not found" "ping google.com failed" "" "" "no valid response")
+
+# Run all 5 tests in parallel using temp files for results
+TDIR=$(mktemp -d)
 
 ensure_emulator
-info "  Test 1: tun0 interface..."
-TUN_CHECK=$("$ADB" shell ip addr show tun0 2>&1 || true)
-TEST_NAMES+=("TUN interface")
-if echo "$TUN_CHECK" | grep -q "inet "; then
-    TEST_RESULTS+=("PASS"); TEST_DETAILS+=("tun0 up"); PASS=$((PASS + 1))
-else
-    TEST_RESULTS+=("FAIL"); TEST_DETAILS+=("tun0 not found")
-fi
+info "  Running tests in parallel..."
 
-ensure_emulator
-info "  Test 2: DNS resolution..."
-DNS_OUT=$("$ADB" shell "ping -c 1 -W 5 google.com 2>&1" || true)
-TEST_NAMES+=("DNS resolution")
-if echo "$DNS_OUT" | grep -qE "PING google\.com \([0-9]+\.[0-9]+"; then
-    TEST_RESULTS+=("PASS"); TEST_DETAILS+=("google.com resolved"); PASS=$((PASS + 1))
-else
-    TEST_RESULTS+=("FAIL"); TEST_DETAILS+=("ping google.com failed")
-fi
+# Test 1: tun0 interface (we already checked, reuse result)
+(
+    TUN_CHECK=$("$ADB" shell ip addr show tun0 2>&1 || true)
+    if echo "$TUN_CHECK" | grep -q "inet "; then
+        echo "PASS" > "$TDIR/t1_result"; echo "tun0 up" > "$TDIR/t1_detail"
+    else
+        echo "FAIL" > "$TDIR/t1_result"; echo "tun0 not found" > "$TDIR/t1_detail"
+    fi
+) &
 
-ensure_emulator
-info "  Test 3: TCP 1.1.1.1:80..."
-NC1=$("$ADB" shell "echo '' | nc -w 5 1.1.1.1 80 >/dev/null 2>&1; echo \$?" | tr -d '\r' | tail -1)
-TEST_NAMES+=("TCP 1.1.1.1:80")
-if [[ "$NC1" == "0" ]]; then
-    TEST_RESULTS+=("PASS"); TEST_DETAILS+=("connected"); PASS=$((PASS + 1))
-else
-    TEST_RESULTS+=("FAIL"); TEST_DETAILS+=("exit=$NC1")
-fi
+# Test 2: DNS resolution
+(
+    DNS_OUT=$("$ADB" shell "ping -c 1 -W 5 google.com 2>&1" || true)
+    if echo "$DNS_OUT" | grep -qE "PING google\.com \([0-9]+\.[0-9]+"; then
+        echo "PASS" > "$TDIR/t2_result"; echo "google.com resolved" > "$TDIR/t2_detail"
+    else
+        echo "FAIL" > "$TDIR/t2_result"; echo "ping google.com failed" > "$TDIR/t2_detail"
+    fi
+) &
 
-ensure_emulator
-info "  Test 4: TCP 8.8.8.8:443..."
-NC2=$("$ADB" shell "echo '' | nc -w 5 8.8.8.8 443 >/dev/null 2>&1; echo \$?" | tr -d '\r' | tail -1)
-TEST_NAMES+=("TCP 8.8.8.8:443")
-if [[ "$NC2" == "0" ]]; then
-    TEST_RESULTS+=("PASS"); TEST_DETAILS+=("connected"); PASS=$((PASS + 1))
-else
-    TEST_RESULTS+=("FAIL"); TEST_DETAILS+=("exit=$NC2")
-fi
+# Test 3: TCP 1.1.1.1:80
+(
+    NC1=$("$ADB" shell "echo '' | nc -w 5 1.1.1.1 80 >/dev/null 2>&1; echo \$?" | tr -d '\r' | tail -1)
+    if [[ "$NC1" == "0" ]]; then
+        echo "PASS" > "$TDIR/t3_result"; echo "connected" > "$TDIR/t3_detail"
+    else
+        echo "FAIL" > "$TDIR/t3_result"; echo "exit=$NC1" > "$TDIR/t3_detail"
+    fi
+) &
 
-ensure_emulator
-info "  Test 5: HTTP request (Google generate_204)..."
-HTTP_OUT=$("$ADB" shell "{ printf 'GET /generate_204 HTTP/1.0\r\nHost: connectivitycheck.gstatic.com\r\nConnection: close\r\n\r\n'; sleep 5; } | nc connectivitycheck.gstatic.com 80 2>/dev/null | head -1" | tr -d '\r' || true)
-TEST_NAMES+=("HTTP generate_204")
-if echo "$HTTP_OUT" | grep -qE "HTTP/.* (200|204|301|302)"; then
-    HTTP_CODE=$(echo "$HTTP_OUT" | grep -oE "[0-9]{3}" | head -1)
-    TEST_RESULTS+=("PASS"); TEST_DETAILS+=("HTTP $HTTP_CODE"); PASS=$((PASS + 1))
-else
-    TEST_RESULTS+=("FAIL"); TEST_DETAILS+=("no valid response")
-fi
+# Test 4: TCP 8.8.8.8:443
+(
+    NC2=$("$ADB" shell "echo '' | nc -w 5 8.8.8.8 443 >/dev/null 2>&1; echo \$?" | tr -d '\r' | tail -1)
+    if [[ "$NC2" == "0" ]]; then
+        echo "PASS" > "$TDIR/t4_result"; echo "connected" > "$TDIR/t4_detail"
+    else
+        echo "FAIL" > "$TDIR/t4_result"; echo "exit=$NC2" > "$TDIR/t4_detail"
+    fi
+) &
+
+# Test 5: HTTP request (Google generate_204) — reduced sleep from 5s to 2s
+(
+    HTTP_OUT=$("$ADB" shell "{ printf 'GET /generate_204 HTTP/1.0\r\nHost: connectivitycheck.gstatic.com\r\nConnection: close\r\n\r\n'; sleep 2; } | nc connectivitycheck.gstatic.com 80 2>/dev/null | head -1" | tr -d '\r' || true)
+    if echo "$HTTP_OUT" | grep -qE "HTTP/.* (200|204|301|302)"; then
+        HTTP_CODE=$(echo "$HTTP_OUT" | grep -oE "[0-9]{3}" | head -1)
+        echo "PASS" > "$TDIR/t5_result"; echo "HTTP $HTTP_CODE" > "$TDIR/t5_detail"
+    else
+        echo "FAIL" > "$TDIR/t5_result"; echo "no valid response" > "$TDIR/t5_detail"
+    fi
+) &
+
+# Wait for all parallel tests to complete
+wait
+
+# Collect results
+for i in 1 2 3 4 5; do
+    idx=$((i - 1))
+    if [[ -f "$TDIR/t${i}_result" ]]; then
+        TEST_RESULTS[$idx]=$(cat "$TDIR/t${i}_result")
+        TEST_DETAILS[$idx]=$(cat "$TDIR/t${i}_detail")
+        if [[ "${TEST_RESULTS[$idx]}" == "PASS" ]]; then
+            PASS=$((PASS + 1))
+        fi
+    fi
+done
+rm -rf "$TDIR"
 
 # Stop logcat collection
 if [[ -n "$LOGCAT_PID" ]] && kill -0 "$LOGCAT_PID" 2>/dev/null; then
