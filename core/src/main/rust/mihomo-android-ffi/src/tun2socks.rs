@@ -126,7 +126,23 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
 
     // Task 3: Accept TCP connections → SOCKS5 relay
     let tcp_accept_handle = tokio::spawn(async move {
+        // VPN router address — DoT (port 853) connections here must be rejected
+        // immediately to avoid timeouts from Android's Private DNS feature.
+        let vlan_router: Ipv4Addr = "172.19.0.2".parse().unwrap();
+
         while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
+            // Reject DoT to the VPN router — nothing listens on 853 and it would
+            // time out through the proxy, stalling DNS fallback for ~2 minutes.
+            if remote_addr.port() == 853 {
+                if let SocketAddr::V4(v4) = remote_addr {
+                    if *v4.ip() == vlan_router {
+                        debug!("tun2socks: rejecting DoT to VPN router {}", remote_addr);
+                        drop(stream);
+                        continue;
+                    }
+                }
+            }
+
             let sa = socks_addr;
             logging::bridge_log(&format!("tun2socks: TCP {} -> {}", local_addr, remote_addr));
             tokio::spawn(async move {

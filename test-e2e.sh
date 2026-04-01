@@ -162,6 +162,9 @@ info "Subscription HTTP server running (PID $HTTPD_PID)"
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0
 
+# Disable Private DNS to prevent DoT (TCP 853) timeouts through the VPN tunnel
+"$ADB" shell settings put global private_dns_mode off
+
 # Start logcat in background for real-time diagnostics
 info "Starting background logcat -> $LOGCAT_FILE"
 "$ADB" logcat -c 2>/dev/null || true
