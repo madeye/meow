@@ -44,7 +44,7 @@ pub(crate) static HOME_DIR: Mutex<Option<String>> = Mutex::new(None);
 // ---------------------------------------------------------------------------
 
 thread_local! {
-    static LAST_ERROR: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+    static LAST_ERROR: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
 }
 
 fn set_error(msg: String) {
@@ -322,7 +322,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeValidate
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLastError(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
 ) -> jstring {
     let msg = get_error();
@@ -333,7 +333,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLastE
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
 ) -> jstring {
     env.new_string("mihomo-rust 0.2.0")

@@ -8,7 +8,7 @@ use jni::objects::GlobalRef;
 use jni::JavaVM;
 use parking_lot::Mutex;
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+use std::os::unix::io::AsRawFd;
 use std::sync::OnceLock;
 use tokio::net::TcpStream;
 
@@ -64,6 +64,7 @@ pub fn protect_fd(fd: i32) -> bool {
 
 /// Create a TCP socket, protect it via VpnService.protect(fd), then connect.
 /// This replaces the standard `TcpStream::connect()` for proxy outbound connections.
+#[allow(dead_code)]
 pub async fn protected_connect(addr: &str) -> std::io::Result<TcpStream> {
     // Resolve address
     let sock_addr: SocketAddr = match addr.parse() {
@@ -83,7 +84,7 @@ pub async fn protected_connect(addr: &str) -> std::io::Result<TcpStream> {
         SocketAddr::V6(_) => socket2::Domain::IPV6,
     };
     let socket = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     socket.set_nonblocking(true)?;
 
     let raw_fd = socket.as_raw_fd();
@@ -111,7 +112,7 @@ pub async fn protected_connect(addr: &str) -> std::io::Result<TcpStream> {
 
     // Better approach: use socket2 to start the connect, then wrap
     let socket = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     socket.set_nonblocking(true)?;
 
     let raw_fd = socket.as_raw_fd();
