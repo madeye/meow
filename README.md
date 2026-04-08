@@ -2,7 +2,7 @@
 
 ![Feature Graphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
-A Clash/mihomo Android client with Flutter UI, powered by [mihomo-rust](https://github.com/madeye/mihomo-rust) and netstack-smoltcp tun2socks.
+A Clash/mihomo Android client with Flutter UI, powered by upstream [mihomo](https://github.com/MetaCubeX/mihomo) (Go) and netstack-smoltcp tun2socks (Rust).
 
 ## Download
 
@@ -17,14 +17,17 @@ Flutter UI (Dart)
     v
 Android Native (Kotlin)
     |  VpnService + AIDL IPC
-    |  JNI (System.loadLibrary)
-    v
-Rust FFI (libmihomo_android_ffi.so)
-    |  netstack-smoltcp tun2socks
-    |  Per-socket VpnService.protect() via JNI
-    v
-mihomo-rust (Cargo dependency)
-    |  Tunnel, Config, Proxy, API
+    |  JNI (two native libraries)
+    |
+    |---> libmihomo_android_ffi.so (Rust)
+    |         netstack-smoltcp tun2socks
+    |         DoH forwarder for UDP:53
+    |         TCP -> SOCKS5 127.0.0.1:7890
+    |
+    |---> libmihomo.so             (Go)
+              upstream MetaCubeX/mihomo engine
+              mixed listener, rules, proxy adapters
+              per-socket VpnService.protect() via dialer hook
     v
 Network
 ```
@@ -53,6 +56,7 @@ Network
   ```
   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
   ```
+- Go 1.23+ (used to cross-compile the upstream mihomo engine)
 - Flutter SDK (3.x)
 - JDK 17
 
@@ -62,9 +66,9 @@ Network
 # Generate Flutter module files
 cd flutter_module && flutter pub get && cd ..
 
-# Build debug APK (arm64 only, release Rust)
+# Build debug APK (arm64 only, release native libraries)
 export JAVA_HOME=/path/to/jdk17
-./gradlew :mobile:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release
+./gradlew :mobile:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release -PGO_PROFILE=release
 ```
 
 The APK is at `mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk`.
@@ -82,8 +86,9 @@ The APK is at `mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk`.
 core/                           Android library module
   src/main/java/                Kotlin: VPN service, AIDL, Room DB
   src/main/rust/
-    mihomo-android-ffi/         Rust FFI crate (JNI + tun2socks)
-    mihomo-proxy-patched/       Patched proxy adapters (socket protection)
+    mihomo-android-ffi/         Rust FFI crate (JNI + netstack-smoltcp tun2socks + DoH)
+  src/main/go/
+    mihomo-core/                Go module wrapping upstream MetaCubeX/mihomo
 flutter_module/                 Flutter UI module
   lib/screens/                  Home, Subscriptions, Traffic, Settings
   lib/l10n/                     Localization (en, zh_CN)

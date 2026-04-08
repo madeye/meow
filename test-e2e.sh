@@ -100,7 +100,8 @@ command -v "$SSSERVER" &>/dev/null || [[ -f "$SSSERVER" ]] || fail "ssserver not
 [[ -x "$ADB" ]] || command -v "$ADB" &>/dev/null || fail "adb not found"
 info "All prerequisites OK."
 
-# Step 2: ssserver (plain SS, no plugin — mihomo-rust can't spawn v2ray-plugin on Android)
+# Step 2: ssserver (plain SS, no plugin — keep the setup simple; Go mihomo
+#         supports v2ray-plugin in principle but we don't ship the binary.)
 info "Step 2: Starting ssserver on $SS_ADDR ..."
 "$SSSERVER" -s "$SS_ADDR" -k "$SS_PASSWORD" -m "$SS_METHOD" -U &
 SSSERVER_PID=$!

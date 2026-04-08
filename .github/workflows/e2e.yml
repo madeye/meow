@@ -41,6 +41,12 @@ jobs:
         with:
           targets: x86_64-linux-android
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: core/src/main/go/mihomo-core/go.mod
+
       - name: Cargo cache
         uses: actions/cache@v4
         with:

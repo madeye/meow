@@ -188,7 +188,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                     }
                     "getVersion" -> {
                         try {
-                            result.success(io.github.madeye.meow.core.MihomoCore.nativeVersion())
+                            result.success(io.github.madeye.meow.core.MihomoEngine.nativeVersion())
                         } catch (_: Exception) {
                             result.success("unknown")
                         }
