@@ -61,13 +61,7 @@ jobs:
         run: command -v cargo-ndk || cargo install cargo-ndk
 
       - name: Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-lint-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-lint-${{ runner.os }}-
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Android Lint
         run: ./gradlew :mobile:lintDebug -PTARGET_ABI=x86_64 -PCARGO_PROFILE=debug

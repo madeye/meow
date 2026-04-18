@@ -82,13 +82,7 @@ jobs:
         run: command -v cargo-ndk || cargo install cargo-ndk
 
       - name: Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-androidtest-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-androidtest-${{ runner.os }}-
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Enable KVM
         run: |
