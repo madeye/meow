@@ -59,6 +59,9 @@ class MihomoConnection(private var listenForBandwidth: Boolean = false) : Servic
     override fun onServiceDisconnected(name: ComponentName?) {
         callbackRegistered = false
         service = null
+        // VPN runs in a separate :vpn process; if it dies (system kill, crash),
+        // the UI would otherwise keep showing the last-known state.
+        callback?.stateChanged(BaseService.State.Stopped, "", null)
     }
 
     private fun unregisterCallback() {

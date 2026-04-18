@@ -14,7 +14,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _vpn = VpnChannel.instance;
   VpnState _state = VpnState.stopped;
   TrafficStats _traffic = const TrafficStats();
@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadState();
     profileChanged.addListener(_loadState);
     _stateSub = _vpn.stateStream.listen((s) {
@@ -39,6 +40,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _trafficSub = _vpn.trafficStream.listen((t) {
       if (mounted) setState(() => _traffic = t);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // The :vpn process may have been killed while we were backgrounded.
+      // Re-query rather than trusting the cached state.
+      _loadState();
+    }
   }
 
   Future<void> _loadState() async {
@@ -66,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     profileChanged.removeListener(_loadState);
     _stateSub?.cancel();
     _trafficSub?.cancel();
