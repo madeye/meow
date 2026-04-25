@@ -4,10 +4,13 @@
 
 A Clash/mihomo Android client with Flutter UI, powered by [mihomo-rust](https://github.com/madeye/mihomo-rust) and netstack-smoltcp tun2socks.
 
+An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
+
 ## Download
 
 [<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80">](https://play.google.com/store/apps/details?id=io.github.madeye.meow)
 [<img src="https://img.shields.io/badge/Download_from-GitHub-333?style=for-the-badge&logo=github&logoColor=white" alt="Download from GitHub" height="80">](https://github.com/madeye/meow/releases/latest)
+[<img src="https://img.shields.io/badge/iOS-TestFlight_Beta-0070F5?style=for-the-badge&logo=apple&logoColor=white" alt="Join the iOS TestFlight public beta" height="80">](https://testflight.apple.com/join/nnDAn7ZH)
 
 ## Architecture
 
