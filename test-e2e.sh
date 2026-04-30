@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EMULATOR="${EMULATOR:-/Volumes/Data/workspace/android/emulator/emulator}"
 ADB="${ADB:-/Volumes/Data/workspace/android/platform-tools/adb}"
-AVD="${AVD:-Medium_Phone_API_36.1}"
+AVD="${AVD:-meow_api35}"
 APK="${APK:-$SCRIPT_DIR/mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk}"
 SSSERVER="${SSSERVER:-ssserver}"
 V2RAY_PLUGIN="${V2RAY_PLUGIN:-v2ray-plugin}"
