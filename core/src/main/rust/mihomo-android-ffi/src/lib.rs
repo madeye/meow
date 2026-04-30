@@ -1,19 +1,41 @@
+//! Rust half of the meow-android native stack — JNI surface for the Kotlin
+//! VPN service.
+//!
+//! Embeds the mihomo-rust v0.6.0 proxy engine (with a local fork of
+//! `mihomo-proxy` carrying the `set_pre_connect_hook` patch) and the
+//! tun2socks layer in one cdylib. Ordinary TCP traffic is dispatched via a
+//! local SOCKS5 listener (`MixedListener` on 127.0.0.1:7890) — see
+//! `tun2socks.rs`. The DoH client (`doh_client.rs`) and the China-DNS
+//! split-horizon layer (`china_dns.rs`) dispatch in-process via
+//! `mihomo_tunnel::tcp::handle_tcp` to avoid a startup-time dependency on
+//! the SOCKS listener.
+
+mod china_dns;
 mod diagnostics;
 mod dns_table;
+mod doh_cache;
 mod doh_client;
+mod engine;
 mod listener;
 mod logging;
 mod protect;
 mod tun2socks;
 
+use dashmap::DashMap;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 use listener::MixedListener;
+use mihomo_api::log_stream::{LogBroadcastLayer, LogMessage};
 use mihomo_api::ApiServer;
+use mihomo_dns::DnsServer;
 use mihomo_tunnel::Tunnel;
-use parking_lot::Mutex;
-use std::sync::{Arc, OnceLock};
+use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Once, OnceLock};
+use tokio::sync::broadcast;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Global state
@@ -31,12 +53,12 @@ pub(crate) fn get_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-struct EngineState {
-    tunnel: Tunnel,
+pub(crate) struct EngineState {
+    pub(crate) tunnel: Tunnel,
     _handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
-static ENGINE: Mutex<Option<EngineState>> = Mutex::new(None);
+pub(crate) static ENGINE: Mutex<Option<EngineState>> = Mutex::new(None);
 pub(crate) static HOME_DIR: Mutex<Option<String>> = Mutex::new(None);
 
 // ---------------------------------------------------------------------------
@@ -73,6 +95,34 @@ rules:\n\
 ";
 
 // ---------------------------------------------------------------------------
+// Process-wide tracing subscriber + log broadcast channel
+//
+// Mirrors meow-ios `engine::log_broadcast_tx` / `install_tracing_subscriber`.
+// `set_global_default` can only be installed once per process; subsequent
+// engine restarts reuse the same broadcast::Sender that was registered the
+// first time.
+// ---------------------------------------------------------------------------
+
+fn log_broadcast_tx() -> &'static broadcast::Sender<LogMessage> {
+    static TX: OnceLock<broadcast::Sender<LogMessage>> = OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, _rx) = broadcast::channel(128);
+        tx
+    })
+}
+
+fn install_tracing_subscriber() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let log_layer = LogBroadcastLayer {
+            tx: log_broadcast_tx().clone(),
+        }
+        .with_filter(LevelFilter::INFO);
+        let _ = tracing_subscriber::registry().with(log_layer).try_init();
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Engine lifecycle
 // ---------------------------------------------------------------------------
 
@@ -105,11 +155,13 @@ async fn start_engine_async(
 ) -> Result<EngineState, anyhow::Error> {
     logging::bridge_log("start_engine_async: initializing rustls");
     let _ = rustls::crypto::ring::default_provider().install_default();
+    install_tracing_subscriber();
 
     let config_str = if let Some(dir) = HOME_DIR.lock().as_ref() {
         // Set XDG_CONFIG_HOME so mihomo-config finds GeoIP databases.
-        // mihomo-config looks for $XDG_CONFIG_HOME/mihomo/Country.mmdb
-        // Our dir is .../no_backup/mihomo, so set XDG_CONFIG_HOME to parent (.../no_backup)
+        // mihomo-config looks for $XDG_CONFIG_HOME/mihomo/Country.mmdb.
+        // Our dir is .../no_backup/mihomo, so set XDG_CONFIG_HOME to its
+        // parent (.../no_backup).
         if let Some(parent) = std::path::Path::new(dir).parent() {
             std::env::set_var("XDG_CONFIG_HOME", parent);
             logging::bridge_log(&format!(
@@ -133,7 +185,7 @@ async fn start_engine_async(
         logging::bridge_log("start_engine_async: no home dir, using minimal config");
         MINIMAL_CONFIG.to_string()
     };
-    let mut config = mihomo_config::load_config_from_str(&config_str)?;
+    let mut config = mihomo_config::load_config_from_str(&config_str).await?;
     logging::bridge_log(&format!(
         "start_engine_async: config loaded, proxies={}, rules={}",
         config.proxies.len(),
@@ -147,7 +199,7 @@ async fn start_engine_async(
         config.api.secret = if s.is_empty() { None } else { Some(s) };
     }
 
-    let raw_config = Arc::new(parking_lot::RwLock::new(config.raw.clone()));
+    let raw_config = Arc::new(RwLock::new(config.raw.clone()));
     let tunnel = Tunnel::new(config.dns.resolver.clone());
     tunnel.set_mode(config.general.mode);
     tunnel.update_rules(config.rules);
@@ -155,7 +207,33 @@ async fn start_engine_async(
 
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    // DNS is handled by tun2socks DoH forwarder, not mihomo's DNS server
+    // mihomo-rust v0.6.0 ApiServer::new grew from 5 → 9 params for the new
+    // /providers/*, /rules, /listeners and /logs routes. Build the required
+    // shapes from the loaded Config.
+    let proxy_providers = {
+        let map: DashMap<_, _> = config.proxy_providers.into_iter().collect();
+        Arc::new(map)
+    };
+    let rule_providers = Arc::new(RwLock::new(
+        config.rule_providers.into_iter().collect::<HashMap<_, _>>(),
+    ));
+    let listeners_for_api = config.listeners.named.clone();
+    let log_tx = log_broadcast_tx().clone();
+
+    // DNS server task (v0.6.0 split: the resolver's UDP/53 listener moved
+    // into a separate `DnsServer::new(resolver, addr).run()`). This is
+    // optional — Android's tun2socks intercepts UDP/53 and dispatches to
+    // china_dns/DoH, so the engine's listener typically is not configured.
+    // If the user explicitly sets `dns.listen` in config.yaml, we honour it.
+    if let Some(addr) = config.dns.listen_addr {
+        let resolver = config.dns.resolver.clone();
+        handles.push(tokio::spawn(async move {
+            let dns_server = DnsServer::new(resolver, addr);
+            if let Err(e) = dns_server.run().await {
+                tracing::error!("DNS server error: {}", e);
+            }
+        }));
+    }
 
     if let Some(api_addr) = config.api.external_controller {
         let api_server = ApiServer::new(
@@ -164,6 +242,10 @@ async fn start_engine_async(
             config.api.secret.clone(),
             String::new(),
             raw_config.clone(),
+            log_tx,
+            proxy_providers,
+            rule_providers,
+            listeners_for_api,
         );
         handles.push(tokio::spawn(async move {
             if let Err(e) = api_server.run().await {
@@ -172,6 +254,8 @@ async fn start_engine_async(
         }));
     }
 
+    // Android-specific: keep the SOCKS5 mixed listener for ordinary
+    // tun2socks TCP traffic. iOS dispatches in-process and skips this.
     let bind_addr = &config.listeners.bind_address;
     if let Some(port) = config.listeners.mixed_port {
         let addr: std::net::SocketAddr = format!("{}:{}", bind_addr, port).parse()?;
@@ -332,7 +416,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeValidate
     yaml: JString,
 ) -> jint {
     let yaml_str: String = env.get_string(&yaml).map(|s| s.into()).unwrap_or_default();
-    match mihomo_config::load_config_from_str(&yaml_str) {
+    match get_runtime().block_on(mihomo_config::load_config_from_str(&yaml_str)) {
         Ok(_) => 0,
         Err(e) => {
             set_error(format!("validate config: {}", e));
@@ -357,7 +441,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("mihomo-rust 0.2.0")
+    env.new_string("mihomo-rust 0.6.0")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
 }

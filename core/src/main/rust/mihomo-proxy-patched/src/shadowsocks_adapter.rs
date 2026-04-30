@@ -3,7 +3,8 @@ use crate::simple_obfs::{HttpObfs, TlsObfs};
 use crate::v2ray_plugin::{self, V2rayPluginConfig};
 use async_trait::async_trait;
 use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyPacketConn, Result,
+    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
+    Result,
 };
 use shadowsocks::config::{Mode, ServerAddr, ServerConfig, ServerType};
 use shadowsocks::context::Context;
@@ -53,6 +54,7 @@ pub struct ShadowsocksAdapter {
     addr_str: String,
     support_udp: bool,
     plugin: PluginKind,
+    health: ProxyHealth,
 }
 
 impl ShadowsocksAdapter {
@@ -124,6 +126,7 @@ impl ShadowsocksAdapter {
             addr_str,
             support_udp: udp,
             plugin,
+            health: ProxyHealth::new(),
         })
     }
 }
@@ -312,9 +315,11 @@ impl ProxyAdapter for ShadowsocksAdapter {
             PluginKind::Obfs(obfs) => {
                 // Open a raw TCP connection to the SS server, wrap it in the
                 // simple-obfs codec, then layer the SS crypto stream on top.
-                // Route through the protect hook on Android so the SYN
-                // bypasses the VPN tunnel.
-                let tcp = protected_tcp_connect(&format!("{}:{}", self.server, self.port))
+                // Use the global protect hook so VpnService.protect(fd) fires
+                // before the SYN — otherwise the proxy socket loops back into
+                // the VPN TUN.
+                let server_addr = format!("{}:{}", self.server, self.port);
+                let tcp = protected_tcp_connect(&server_addr)
                     .await
                     .map_err(|e| MihomoError::Proxy(format!("ss obfs tcp connect: {}", e)))?;
                 let _ = tcp.set_nodelay(true);
@@ -382,6 +387,10 @@ impl ProxyAdapter for ShadowsocksAdapter {
             .map_err(|e| MihomoError::Proxy(format!("ss udp connect: {}", e)))?;
         debug!("SS UDP connected via {}", self.addr_str);
         Ok(Box::new(SsPacketConn { socket }))
+    }
+
+    fn health(&self) -> &ProxyHealth {
+        &self.health
     }
 }
 

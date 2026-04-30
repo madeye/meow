@@ -1,13 +1,23 @@
 [package]
 name = "mihomo-proxy"
-version = "0.3.0"
+version = "0.6.0"
 edition = "2021"
+rust-version = "1.88"
+
+[features]
+default = ["ss", "trojan", "vless", "vless-vision"]
+ss = ["dep:shadowsocks"]
+trojan = []
+vless = []
+vless-vision = ["vless"]
 
 [dependencies]
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
+mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-transport = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
 tokio = { version = "1", features = ["full"] }
-shadowsocks = { version = "1.21", features = ["aead-cipher-2022", "stream-cipher"] }
-tokio-rustls = "0.26"
+shadowsocks = { version = "1.21", features = ["aead-cipher-2022", "stream-cipher"], optional = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 webpki-roots = "0.26"
 sha2 = "0.10"
@@ -21,6 +31,7 @@ base64 = "0.22"
 futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 parking_lot = "0.12"
+regex = "1"
 dashmap = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

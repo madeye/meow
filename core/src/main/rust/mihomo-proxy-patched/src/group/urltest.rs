@@ -1,57 +1,101 @@
 use async_trait::async_trait;
 use mihomo_common::{
-    AdapterType, DelayHistory, Metadata, MihomoError, Proxy, ProxyAdapter, ProxyConn,
-    ProxyPacketConn, Result,
+    AdapterType, DelayHistory, Metadata, MihomoError, ProviderSlot, Proxy, ProxyAdapter, ProxyConn,
+    ProxyHealth, ProxyPacketConn, Result,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
 
 pub struct UrlTestGroup {
     name: String,
-    proxies: Vec<Arc<dyn Proxy>>,
+    static_proxies: Vec<Arc<dyn Proxy>>,
+    provider_slots: Vec<ProviderSlot>,
     tolerance: u16,
-    fastest: RwLock<usize>,
+    /// Name of the currently fastest proxy; `None` means use the first.
+    fastest: RwLock<Option<String>>,
+    health: ProxyHealth,
 }
 
 impl UrlTestGroup {
     pub fn new(name: &str, proxies: Vec<Arc<dyn Proxy>>, tolerance: u16) -> Self {
         Self {
             name: name.to_string(),
-            proxies,
+            static_proxies: proxies,
+            provider_slots: Vec::new(),
             tolerance,
-            fastest: RwLock::new(0),
+            fastest: RwLock::new(None),
+            health: ProxyHealth::new(),
         }
     }
 
+    pub fn new_with_providers(
+        name: &str,
+        proxies: Vec<Arc<dyn Proxy>>,
+        tolerance: u16,
+        slots: Vec<ProviderSlot>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            static_proxies: proxies,
+            provider_slots: slots,
+            tolerance,
+            fastest: RwLock::new(None),
+            health: ProxyHealth::new(),
+        }
+    }
+
+    fn effective_proxies(&self) -> Vec<Arc<dyn Proxy>> {
+        let mut all = self.static_proxies.clone();
+        for slot in &self.provider_slots {
+            all.extend(slot.read().iter().cloned());
+        }
+        all
+    }
+
     pub fn update_fastest(&self) {
-        let mut best_idx = 0;
+        let all = self.effective_proxies();
+        let mut best_name: Option<String> = None;
         let mut best_delay = u16::MAX;
-        for (idx, proxy) in self.proxies.iter().enumerate() {
+
+        for proxy in &all {
             if proxy.alive() {
                 let delay = proxy.last_delay();
                 if delay > 0 && delay < best_delay {
                     best_delay = delay;
-                    best_idx = idx;
+                    best_name = Some(proxy.name().to_string());
                 }
             }
         }
-        // Only switch if the new fastest is better by tolerance
-        let current = *self.fastest.read();
-        let current_delay = self
-            .proxies
-            .get(current)
+
+        let current_name: Option<String> = self.fastest.read().clone();
+        let current_delay = current_name
+            .as_deref()
+            .and_then(|n| all.iter().find(|p| p.name() == n))
             .map(|p| p.last_delay())
             .unwrap_or(u16::MAX);
-        if best_delay + self.tolerance < current_delay
-            || !self.proxies.get(current).is_some_and(|p| p.alive())
-        {
-            *self.fastest.write() = best_idx;
+        let current_alive = current_name
+            .as_deref()
+            .and_then(|n| all.iter().find(|p| p.name() == n))
+            .is_some_and(|p| p.alive());
+
+        if let Some(ref bname) = best_name {
+            if best_delay + self.tolerance < current_delay || !current_alive {
+                *self.fastest.write() = Some(bname.clone());
+            }
+        } else if !current_alive {
+            *self.fastest.write() = all.first().map(|p| p.name().to_string());
         }
     }
 
     fn fastest_proxy(&self) -> Option<Arc<dyn Proxy>> {
-        let idx = *self.fastest.read();
-        self.proxies.get(idx).cloned()
+        let all = self.effective_proxies();
+        let name: Option<String> = self.fastest.read().clone();
+        if let Some(n) = name {
+            if let Some(p) = all.iter().find(|p| p.name() == n) {
+                return Some(p.clone());
+            }
+        }
+        all.into_iter().next()
     }
 }
 
@@ -92,6 +136,10 @@ impl ProxyAdapter for UrlTestGroup {
     fn unwrap_proxy(&self, _metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
         self.fastest_proxy()
     }
+
+    fn health(&self) -> &ProxyHealth {
+        &self.health
+    }
 }
 
 impl Proxy for UrlTestGroup {
@@ -117,5 +165,18 @@ impl Proxy for UrlTestGroup {
         self.fastest_proxy()
             .map(|p| p.delay_history())
             .unwrap_or_default()
+    }
+
+    fn members(&self) -> Option<Vec<String>> {
+        Some(
+            self.effective_proxies()
+                .iter()
+                .map(|p| p.name().to_string())
+                .collect(),
+        )
+    }
+
+    fn current(&self) -> Option<String> {
+        self.fastest_proxy().map(|p| p.name().to_string())
     }
 }

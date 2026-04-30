@@ -1,29 +1,54 @@
 use async_trait::async_trait;
 use mihomo_common::{
-    AdapterType, DelayHistory, Metadata, MihomoError, Proxy, ProxyAdapter, ProxyConn,
-    ProxyPacketConn, Result,
+    AdapterType, DelayHistory, Metadata, MihomoError, ProviderSlot, Proxy, ProxyAdapter, ProxyConn,
+    ProxyHealth, ProxyPacketConn, Result,
 };
 use std::sync::Arc;
 
 pub struct FallbackGroup {
     name: String,
-    proxies: Vec<Arc<dyn Proxy>>,
+    static_proxies: Vec<Arc<dyn Proxy>>,
+    provider_slots: Vec<ProviderSlot>,
+    health: ProxyHealth,
 }
 
 impl FallbackGroup {
     pub fn new(name: &str, proxies: Vec<Arc<dyn Proxy>>) -> Self {
         Self {
             name: name.to_string(),
-            proxies,
+            static_proxies: proxies,
+            provider_slots: Vec::new(),
+            health: ProxyHealth::new(),
         }
     }
 
+    pub fn new_with_providers(
+        name: &str,
+        proxies: Vec<Arc<dyn Proxy>>,
+        slots: Vec<ProviderSlot>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            static_proxies: proxies,
+            provider_slots: slots,
+            health: ProxyHealth::new(),
+        }
+    }
+
+    fn effective_proxies(&self) -> Vec<Arc<dyn Proxy>> {
+        let mut all = self.static_proxies.clone();
+        for slot in &self.provider_slots {
+            all.extend(slot.read().iter().cloned());
+        }
+        all
+    }
+
     fn first_alive(&self) -> Option<Arc<dyn Proxy>> {
-        self.proxies
-            .iter()
+        let all = self.effective_proxies();
+        all.iter()
             .find(|p| p.alive())
             .cloned()
-            .or_else(|| self.proxies.first().cloned())
+            .or_else(|| all.into_iter().next())
     }
 }
 
@@ -62,6 +87,10 @@ impl ProxyAdapter for FallbackGroup {
     fn unwrap_proxy(&self, _metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
         self.first_alive()
     }
+
+    fn health(&self) -> &ProxyHealth {
+        &self.health
+    }
 }
 
 impl Proxy for FallbackGroup {
@@ -87,5 +116,18 @@ impl Proxy for FallbackGroup {
         self.first_alive()
             .map(|p| p.delay_history())
             .unwrap_or_default()
+    }
+
+    fn members(&self) -> Option<Vec<String>> {
+        Some(
+            self.effective_proxies()
+                .iter()
+                .map(|p| p.name().to_string())
+                .collect(),
+        )
+    }
+
+    fn current(&self) -> Option<String> {
+        self.first_alive().map(|p| p.name().to_string())
     }
 }

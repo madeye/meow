@@ -12,32 +12,72 @@ unsafe_code = "allow"  # JNI requires unsafe
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 needless_return = "allow"
+# False positive on stable: thread_local! initializer is already wrapped in
+# `const { ... }`, but clippy's pattern-matcher doesn't see through the
+# macro expansion on this version.
+missing_const_for_thread_local = "allow"
 
 [dependencies]
-mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
-mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
-mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.3.0" }
+# Embedded mihomo-rust engine. Pinned to v0.6.0 (matches meow-ios).
+mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+# Local fork of mihomo-proxy with the Android `set_pre_connect_hook` patch.
 mihomo-proxy = { path = "../mihomo-proxy-patched" }
-socket2 = "0.5"
+
+# Explicit pins (transitive through mihomo-tunnel; surfaced here because
+# engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
+# and china_dns / tun2socks NAT-key construction needs the same concrete types
+# mihomo-tunnel uses internally).
+dashmap = "6"
+
+# Async runtime
 tokio = { version = "1", features = ["full"] }
 parking_lot = "0.12"
+futures = "0.3"
+
+# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+android_logger = "0.14"
+
+# HTTP / YAML / serialization
+# DoH dispatches per-request through `mihomo_tunnel::tcp::handle_tcp` over a
+# `tokio::io::duplex` pair (no loopback listener), so we need hyper + tokio-rustls
+# directly rather than reqwest's pooled client + Proxy machinery.
+hyper = { version = "1", default-features = false, features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
-serde = { version = "1", features = ["derive"] }
-anyhow = "1"
+
+# Low-level
 libc = "0.2"
+anyhow = "1"
 nix = { version = "0.29", features = ["fs"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "socks"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
-jni = "0.21"
-android_logger = "0.14"
-log = "0.4"
-futures = "0.3"
+socket2 = "0.5"
+
+# tun2socks
 netstack-smoltcp = "0.2"
+
+# Persistent DoH answer cache (single-writer KV at $HOME_DIR/doh-cache.redb).
+redb = "2"
+
+# GeoIP CN check for the trust-china-dns split-horizon path.
+maxminddb = "0.27"
+ipnetwork = "0.21"
+ipnet = "2"
+iprange = "0.6"
+
+# JNI bridge
+jni = "0.21"
 
 [patch."https://github.com/madeye/mihomo-rust.git"]
 mihomo-proxy = { path = "../mihomo-proxy-patched" }

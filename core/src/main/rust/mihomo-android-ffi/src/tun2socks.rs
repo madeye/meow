@@ -2,6 +2,7 @@
 //! routes TCP through a userspace TCP/IP stack (smoltcp) and forwards via SOCKS5
 //! to the local mihomo mixed listener. UDP DNS is handled via DoH.
 
+use crate::china_dns;
 use crate::dns_table;
 use crate::doh_client;
 use crate::logging;
@@ -10,11 +11,13 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::os::raw::c_void;
 use std::os::unix::io::RawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tokio::sync::{mpsc, Semaphore};
+use tracing::{debug, info, warn};
 
 use netstack_smoltcp::{AnyIpPktFrame, StackBuilder};
 
@@ -24,6 +27,30 @@ use netstack_smoltcp::{AnyIpPktFrame, StackBuilder};
 
 static TUN2SOCKS_RUNNING: AtomicBool = AtomicBool::new(false);
 
+// Burst cap: defensive backstop against the "bursty-on-flow" pattern that lets
+// a reconnect storm (DoH lookups + pent-up connect attempts from every
+// backgrounded app) consume excess memory before any flow completes. Drops at
+// the accept boundary; peers see RST / packet loss for a few hundred ms
+// instead of OOM. Mirrors the iOS DOH_BURST_CAP guard.
+const DOH_BURST_CAP: usize = 256;
+
+static DOH_CAP_LOG_LAST_MS: AtomicU64 = AtomicU64::new(0);
+
+fn warn_capped(slot: &AtomicU64, msg: &str) {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let last = slot.load(Ordering::Relaxed);
+    if now_ms.saturating_sub(last) >= 1000
+        && slot
+            .compare_exchange(last, now_ms, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    {
+        warn!("{}", msg);
+    }
+}
+
 pub fn start(fd: i32, socks_port: u16, _dns_port: u16) -> Result<(), String> {
     if TUN2SOCKS_RUNNING.swap(true, Ordering::SeqCst) {
         return Err("tun2socks already running".into());
@@ -31,7 +58,10 @@ pub fn start(fd: i32, socks_port: u16, _dns_port: u16) -> Result<(), String> {
 
     let socks_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, socks_port));
     info!("tun2socks starting: fd={}, socks={}", fd, socks_addr);
-    doh_client::init_doh_client(socks_port);
+    // DoH dispatches per-request through `mihomo_tunnel::tcp::handle_tcp` —
+    // in-process, no loopback port. The SOCKS listener is still used for
+    // ordinary TCP traffic accepted by the netstack below.
+    doh_client::init_doh_client();
 
     unsafe {
         let flags = libc::fcntl(fd, libc::F_GETFL);
@@ -84,6 +114,9 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
 
     // Channel: stack driver + UDP replies → TUN writer (egress packets)
     let (egress_tx, mut egress_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
+    // Per-DNS-burst semaphore — see DOH_BURST_CAP.
+    let doh_sem = Arc::new(Semaphore::new(DOH_BURST_CAP));
 
     // Task 1: TCP runner (smoltcp internal polling)
     let runner_handle = tokio::spawn(async move {
@@ -188,9 +221,21 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
                 {
                     if dst_port == 53 {
                         _pkt_udp += 1;
+                        // Burst cap at the accept boundary, matching iOS.
+                        let permit = match doh_sem.clone().try_acquire_owned() {
+                            Ok(p) => p,
+                            Err(_) => {
+                                warn_capped(
+                                    &DOH_CAP_LOG_LAST_MS,
+                                    "tun2socks: DoH burst cap reached, dropping query",
+                                );
+                                continue;
+                            }
+                        };
                         let reply_tx = udp_reply_tx.clone();
                         let query = payload.to_vec();
                         tokio::spawn(async move {
+                            let _permit = permit;
                             handle_dns_query(src_ip, src_port, dst_ip, dst_port, query, reply_tx)
                                 .await;
                         });
@@ -434,7 +479,12 @@ async fn handle_dns_query(
         src_port
     ));
 
-    if let Some(response) = doh_client::resolve_via_doh(&query).await {
+    // china_dns layers the trust-china-dns split-horizon resolver over the
+    // DoH path: A/AAAA queries race a Chinese plain-UDP resolver against the
+    // trusted DoH client, picking the China answer iff at least one of its
+    // records resolves to a CN IP per the bundled Country.mmdb. Non-A/AAAA
+    // queries and configurations without GeoIP fall through to plain DoH.
+    if let Some(response) = china_dns::resolve(&query).await {
         for (ip, hostname, ttl) in dns_table::parse_dns_response_records(&response) {
             dns_table::dns_table_insert(ip, hostname, ttl);
         }

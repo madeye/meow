@@ -1,29 +1,59 @@
 use async_trait::async_trait;
 use mihomo_common::{
-    AdapterType, DelayHistory, Metadata, MihomoError, Proxy, ProxyAdapter, ProxyConn,
-    ProxyPacketConn, Result,
+    AdapterType, DelayHistory, Metadata, MihomoError, ProviderSlot, Proxy, ProxyAdapter, ProxyConn,
+    ProxyHealth, ProxyPacketConn, Result,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
 
 pub struct SelectorGroup {
     name: String,
-    proxies: Vec<Arc<dyn Proxy>>,
-    selected: RwLock<usize>,
+    static_proxies: Vec<Arc<dyn Proxy>>,
+    provider_slots: Vec<ProviderSlot>,
+    /// Name of the currently selected proxy; `None` means use the first.
+    selected: RwLock<Option<String>>,
+    health: ProxyHealth,
 }
 
 impl SelectorGroup {
     pub fn new(name: &str, proxies: Vec<Arc<dyn Proxy>>) -> Self {
         Self {
             name: name.to_string(),
-            proxies,
-            selected: RwLock::new(0),
+            static_proxies: proxies,
+            provider_slots: Vec::new(),
+            selected: RwLock::new(None),
+            health: ProxyHealth::new(),
         }
     }
 
+    pub fn new_with_providers(
+        name: &str,
+        proxies: Vec<Arc<dyn Proxy>>,
+        slots: Vec<ProviderSlot>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            static_proxies: proxies,
+            provider_slots: slots,
+            selected: RwLock::new(None),
+            health: ProxyHealth::new(),
+        }
+    }
+
+    fn effective_proxies(&self) -> Vec<Arc<dyn Proxy>> {
+        let mut all = self.static_proxies.clone();
+        for slot in &self.provider_slots {
+            all.extend(slot.read().iter().cloned());
+        }
+        all
+    }
+
+    /// Select the proxy with the given name. Returns `true` if found.
+    /// Selection survives provider refreshes because it is stored by name.
     pub fn select(&self, name: &str) -> bool {
-        if let Some(idx) = self.proxies.iter().position(|p| p.name() == name) {
-            *self.selected.write() = idx;
+        let all = self.effective_proxies();
+        if all.iter().any(|p| p.name() == name) {
+            *self.selected.write() = Some(name.to_string());
             true
         } else {
             false
@@ -31,12 +61,22 @@ impl SelectorGroup {
     }
 
     pub fn selected_proxy(&self) -> Option<Arc<dyn Proxy>> {
-        let idx = *self.selected.read();
-        self.proxies.get(idx).cloned()
+        let all = self.effective_proxies();
+        let sel = self.selected.read();
+        if let Some(name) = sel.as_deref() {
+            if let Some(p) = all.iter().find(|p| p.name() == name) {
+                return Some(p.clone());
+            }
+        }
+        // Fall back to first proxy in the list
+        all.into_iter().next()
     }
 
     pub fn proxy_names(&self) -> Vec<String> {
-        self.proxies.iter().map(|p| p.name().to_string()).collect()
+        self.effective_proxies()
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect()
     }
 }
 
@@ -75,6 +115,10 @@ impl ProxyAdapter for SelectorGroup {
     fn unwrap_proxy(&self, _metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
         self.selected_proxy()
     }
+
+    fn health(&self) -> &ProxyHealth {
+        &self.health
+    }
 }
 
 impl Proxy for SelectorGroup {
@@ -104,5 +148,13 @@ impl Proxy for SelectorGroup {
         self.selected_proxy()
             .map(|p| p.delay_history())
             .unwrap_or_default()
+    }
+
+    fn members(&self) -> Option<Vec<String>> {
+        Some(self.proxy_names())
+    }
+
+    fn current(&self) -> Option<String> {
+        self.selected_proxy().map(|p| p.name().to_string())
     }
 }

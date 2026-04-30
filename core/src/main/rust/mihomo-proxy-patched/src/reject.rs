@@ -1,16 +1,21 @@
 use async_trait::async_trait;
 use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyPacketConn, Result,
+    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
+    Result,
 };
 use std::net::SocketAddr;
 
 pub struct RejectAdapter {
     drop: bool,
+    health: ProxyHealth,
 }
 
 impl RejectAdapter {
     pub fn new(drop: bool) -> Self {
-        Self { drop }
+        Self {
+            drop,
+            health: ProxyHealth::new(),
+        }
     }
 }
 
@@ -110,5 +115,22 @@ impl ProxyAdapter for RejectAdapter {
 
     async fn dial_udp(&self, _metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         Ok(Box::new(RejectPacketConn))
+    }
+
+    /// Refuse the relay chain at a Reject hop.
+    ///
+    /// upstream: adapter/outbound/reject.go — no DialContextWithDialer.
+    /// Inserting REJECT into a relay chain is a misconfiguration; we surface
+    /// a clear error rather than silently dropping bytes.
+    async fn connect_over(
+        &self,
+        _stream: Box<dyn ProxyConn>,
+        _metadata: &Metadata,
+    ) -> Result<Box<dyn ProxyConn>> {
+        Err(MihomoError::Proxy("rejected".into()))
+    }
+
+    fn health(&self) -> &ProxyHealth {
+        &self.health
     }
 }
