@@ -1,3 +1,10 @@
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
+import java.net.URI
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
 plugins {
     id("com.android.library")
     id("com.google.devtools.ksp")
@@ -10,6 +17,42 @@ setupCore()
 
 val allAbis = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")
 val targetAbi = findProperty("TARGET_ABI")?.toString()
+
+// GeoX databases bundled as APK assets so MihomoInstance can seed them into
+// the engine's home dir without needing network on first start. Downloaded
+// at build time to keep multi-MB binaries out of git; cached under build/
+// and re-fetched only when missing. Wired via AGP's
+// `addGeneratedSourceDirectory` so every assets consumer (merge, lint,
+// package) picks up the dependency automatically.
+abstract class DownloadGeoxAssets : DefaultTask() {
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun run() {
+        val base = "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release"
+        val files = mapOf(
+            "geoip.metadb" to "$base/geoip.metadb",
+            "geosite.dat" to "$base/geosite.dat",
+            "country.mmdb" to "$base/country.mmdb",
+            "GeoLite2-ASN.mmdb" to "$base/GeoLite2-ASN.mmdb",
+        )
+        // Files land in `<outputDir>/geox/` so MihomoInstance.kt's
+        // `assets.open("geox/$name")` continues to find them.
+        val dir = outputDir.get().asFile.resolve("geox")
+        dir.mkdirs()
+        files.forEach { (name, url) ->
+            val target = dir.resolve(name)
+            if (target.exists() && target.length() > 0) return@forEach
+            logger.lifecycle("downloadGeoxAssets: $url -> $target")
+            URI(url).toURL().openStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+    }
+}
+
+val downloadGeoxAssets = tasks.register<DownloadGeoxAssets>("downloadGeoxAssets")
 
 android {
     namespace = "io.github.madeye.meow.core"
@@ -28,6 +71,16 @@ android {
     }
 
     buildFeatures.aidl = true
+}
+
+// Register the download output as a generated assets source for every
+// variant. AGP wires up the task dependency for merge / lint / package
+// consumers so we don't need a separate `whenTaskAdded` hook.
+extensions.getByType(LibraryAndroidComponentsExtension::class.java).onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(
+        downloadGeoxAssets,
+        DownloadGeoxAssets::outputDir,
+    )
 }
 
 cargo {

@@ -1077,7 +1077,6 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "h2",
  "http",
  "http-body",
  "httparse",
@@ -1456,6 +1455,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d1eacfa31c33ec25e873c136ba5669f00f9866d0688bea7be4d3f7e43067df6"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libproc"
 version = "0.14.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1564,12 +1572,8 @@ version = "0.1.0"
 dependencies = [
  "android_logger",
  "anyhow",
- "bytes",
  "dashmap",
  "futures",
- "http-body-util",
- "hyper",
- "hyper-util",
  "ipnet",
  "ipnetwork",
  "iprange",
@@ -1583,6 +1587,7 @@ dependencies = [
  "mihomo-dns",
  "mihomo-proxy",
  "mihomo-tunnel",
+ "mimalloc",
  "netstack-smoltcp",
  "nix",
  "parking_lot",
@@ -1593,7 +1598,6 @@ dependencies = [
  "serde_yaml",
  "socket2 0.5.10",
  "tokio",
- "tokio-rustls",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1807,6 +1811,15 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3627c4272df786b9260cabaa46aec1d59c93ede723d4c3ef646c503816b0640"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]

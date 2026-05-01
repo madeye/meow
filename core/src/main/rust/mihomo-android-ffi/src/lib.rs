@@ -5,16 +5,16 @@
 //! `mihomo-proxy` carrying the `set_pre_connect_hook` patch) and the
 //! tun2socks layer in one cdylib. Ordinary TCP traffic is dispatched via a
 //! local SOCKS5 listener (`MixedListener` on 127.0.0.1:7890) — see
-//! `tun2socks.rs`. The DoH client (`doh_client.rs`) and the China-DNS
+//! `tun2socks.rs`. The TCP DNS client (`dns_client.rs`) and the China-DNS
 //! split-horizon layer (`china_dns.rs`) dispatch in-process via
 //! `mihomo_tunnel::tcp::handle_tcp` to avoid a startup-time dependency on
 //! the SOCKS listener.
 
 mod china_dns;
 mod diagnostics;
+mod dns_client;
 mod dns_table;
 mod doh_cache;
-mod doh_client;
 mod engine;
 mod listener;
 mod logging;
@@ -38,6 +38,19 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 
 // ---------------------------------------------------------------------------
+// Global allocator
+//
+// mimalloc instead of the platform malloc (scudo on Android API 30+).
+// Empirically returns freed pages to the OS more aggressively under the
+// allocation patterns mihomo + tun2socks generate (many short-lived
+// per-flow allocations + the geoip mmdb scan), keeping VPN-service RSS
+// closer to working set.
+// ---------------------------------------------------------------------------
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+// ---------------------------------------------------------------------------
 // Global state
 // ---------------------------------------------------------------------------
 
@@ -45,8 +58,15 @@ static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 pub(crate) fn get_runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
+        // Worker count left at the tokio default (one per CPU). Blocking
+        // pool capped at 2 so background work (file I/O, redb writes, geoip
+        // mmdb scans) can't explode RSS via tokio's default 512-thread cap.
+        // Per-thread stack capped at 512 KB (default 2 MB) — async leaf
+        // tasks don't recurse deeply, and this saves ~3 MB RSS per thread
+        // once the blocking pool warms up.
         tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .max_blocking_threads(2)
+            .thread_stack_size(512 * 1024)
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime")
@@ -444,4 +464,24 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env.new_string("mihomo-rust 0.6.0")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
+}
+
+/// Configure the trusted plain-TCP DNS upstream pool from the Kotlin Settings
+/// view. `csv` is a comma-/whitespace-separated list of `host` or
+/// `host:port` entries (port defaults to 53); empty / parse-failed input
+/// falls back to the built-in defaults (1.1.1.1 / 8.8.8.8).
+///
+/// Call this before `nativeStartTun2Socks` — the upstream list is read once
+/// inside `init_dns_client`. Writes are still safe at runtime; they take
+/// effect on the next tunnel start.
+#[no_mangle]
+pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetDnsUpstreams(
+    mut env: JNIEnv,
+    _class: JClass,
+    csv: JString,
+) -> jint {
+    let input: String = env.get_string(&csv).map(|s| s.into()).unwrap_or_default();
+    let parsed = dns_client::parse_upstreams_csv(&input);
+    dns_client::set_user_upstreams(parsed);
+    0
 }

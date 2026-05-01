@@ -1,15 +1,16 @@
-//! Persistent companion to the in-memory DoH answer cache in `doh_client`.
+//! Persistent companion to the in-memory answer cache in `dns_client`.
 //!
 //! Stores `(question_section → (response_bytes, expires_unix_secs))` in a
 //! single redb file under `$HOME_DIR/doh-cache.redb`. Read at
-//! `init_doh_client` to warm the in-memory map; written through on every
+//! `init_dns_client` to warm the in-memory map; written through on every
 //! cache insert/eviction. Expires are wall-clock (`SystemTime`) so a reboot
 //! correctly invalidates stale entries — the in-memory cache uses `Instant`
 //! and is rebuilt fresh from the persisted wall-clock TTLs at hydrate time.
 //!
-//! Single-writer: the DoH client only runs inside the VPN service process
+//! Single-writer: the DNS client only runs inside the VPN service process
 //! (gated by `engine::tunnel()`), so no two processes ever open this file
-//! concurrently.
+//! concurrently. The `doh-cache.redb` filename is retained for backward
+//! compatibility with already-installed clients.
 
 use parking_lot::Mutex;
 use redb::{Database, ReadableTable, TableDefinition};

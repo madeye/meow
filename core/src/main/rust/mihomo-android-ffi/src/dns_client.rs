@@ -1,46 +1,37 @@
-//! DNS-over-HTTPS client. Each request runs over a `tokio::io::duplex` pair
-//! whose far end is handed to `mihomo_tunnel::tcp::handle_tcp` — the same
-//! in-process Rust-to-Rust dispatch path the in-process DoH uses on iOS.
-//!
-//! Note: this is the only path on Android that bypasses the SOCKS5 loopback
-//! to the local MixedListener. Ordinary tun2socks TCP traffic still goes
-//! through SOCKS5 — see `tun2socks::handle_tcp_stream`. Dispatching DoH
-//! in-process avoids a chicken-and-egg dependency on the listener at startup
-//! and matches iOS's design.
+//! Plain-TCP DNS client. Each query opens a `mihomo_tunnel::tcp::handle_tcp`
+//! flow toward an upstream resolver (default 1.1.1.1:53 / 8.8.8.8:53), writes
+//! the RFC 1035 length-prefixed message, then reads the length-prefixed
+//! response. Same in-process Rust-to-Rust dispatch path the netstack TCP
+//! flows take in `tun2socks::handle_tcp_stream` — there is no extra loopback
+//! hop for DNS; mihomo sees the DNS bytes the same way it sees TUN-originated
+//! TCP, so the proxy chain (selector → outbound → upstream) is honored.
 
 use crate::dns_table;
 use crate::doh_cache;
 use crate::engine;
 use crate::logging;
-use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::client::conn::http2;
-use hyper::header::{ACCEPT, CONTENT_TYPE};
-use hyper::{Method, Request, Uri};
-use hyper_util::rt::{TokioExecutor, TokioIo};
 use mihomo_common::{ConnType, Metadata, Network, ProxyConn};
 use parking_lot::Mutex;
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, SignatureScheme};
 use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncRead, AsyncWrite, DuplexStream, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf};
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tokio_rustls::TlsConnector;
 use tracing::{info, warn};
 
-const DOH_TIMEOUT_SECS: u64 = 5;
-const DUPLEX_BUF_SIZE: usize = 64 * 1024;
+const DNS_TIMEOUT_SECS: u64 = 5;
+const DUPLEX_BUF_SIZE: usize = 16 * 1024;
 
-const IP_BASED_DOH_URLS: &[&str] = &["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"];
+const DEFAULT_UPSTREAMS: &[&str] = &["1.1.1.1:53", "8.8.8.8:53"];
 
-// Answer cache: collapses duplicate in-flight queries; same shape as iOS.
+// Answer cache: collapses duplicate in-flight queries. Keyed on the raw
+// question section (name + qtype + qclass); txid is patched onto the cached
+// response per request.
 const CACHE_MAX_ENTRIES: usize = 1024;
 const CACHE_TTL_FLOOR: Duration = Duration::from_secs(10);
 const CACHE_TTL_CEIL: Duration = Duration::from_secs(300);
@@ -54,6 +45,9 @@ fn cache() -> &'static AnswerCache {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// In-flight single-flight: when N identical queries arrive concurrently
+// (the canonical reconnect-burst case), only the first issues a real lookup;
+// the rest subscribe to the leader's broadcast and reuse its result.
 type Inflight = Mutex<HashMap<Vec<u8>, broadcast::Sender<Option<Vec<u8>>>>>;
 
 fn inflight() -> &'static Inflight {
@@ -61,6 +55,9 @@ fn inflight() -> &'static Inflight {
     I.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Owns the inflight-map entry for a leader request. On drop without
+/// `complete()` (i.e. the leader future was cancelled), the entry is purged
+/// and `tx` is dropped — followers see `Err(Closed)` from `recv()` and bail.
 struct LeaderGuard {
     key: Vec<u8>,
     tx: broadcast::Sender<Option<Vec<u8>>>,
@@ -83,6 +80,9 @@ impl Drop for LeaderGuard {
     }
 }
 
+/// Aborts a spawned task when this guard drops. Used to tear down the
+/// `handle_tcp` mihomo flow if `send_query` returns early (timeout, IO error)
+/// instead of leaving it detached.
 struct AbortOnDrop(JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
@@ -99,7 +99,8 @@ fn patch_txid(resp: &mut [u8], query: &[u8]) {
 }
 
 /// Returns the bytes of the question section (qname + qtype + qclass) starting
-/// at offset 12, suitable for use as a cache key.
+/// at offset 12, suitable for use as a cache key. Walks uncompressed labels —
+/// queries from clients don't use compression in the question.
 fn question_section(query: &[u8]) -> Option<&[u8]> {
     if query.len() < 12 {
         return None;
@@ -128,6 +129,9 @@ fn question_section(query: &[u8]) -> Option<&[u8]> {
     Some(&query[12..i + 4])
 }
 
+/// TTL to cache a response for: min TTL across A/AAAA records, clamped to
+/// [`CACHE_TTL_FLOOR`, `CACHE_TTL_CEIL`]. Empty/unparseable responses get
+/// `CACHE_TTL_DEFAULT` so NXDOMAIN bursts are still collapsed.
 fn cache_ttl(response: &[u8]) -> Duration {
     let records = dns_table::parse_dns_response_records(response);
     let min_ttl = records.iter().map(|(_, _, ttl)| *ttl).min();
@@ -137,17 +141,33 @@ fn cache_ttl(response: &[u8]) -> Duration {
     }
 }
 
-struct DohClient {
-    doh_urls: Vec<String>,
-    tls_config: Arc<ClientConfig>,
+struct DnsClient {
+    upstreams: Vec<SocketAddr>,
 }
 
-static DOH_CLIENT: OnceLock<DohClient> = OnceLock::new();
+static DNS_CLIENT: OnceLock<DnsClient> = OnceLock::new();
 
-pub fn init_doh_client() {
-    DOH_CLIENT.get_or_init(|| {
-        let (doh_urls, china_upstreams) = read_dns_config();
-        info!("DoH client (in-process dispatch): urls={:?}", doh_urls);
+/// User-configured upstreams written by `nativeSetDnsUpstreams` (called from
+/// the Kotlin settings layer before `nativeStartTun2Socks`). `None` (never
+/// set) and `Some(empty)` both mean "fall back to built-in defaults".
+static USER_UPSTREAMS: Mutex<Option<Vec<SocketAddr>>> = Mutex::new(None);
+
+/// Replace the in-memory upstream list. Called from the JNI surface when the
+/// user edits the DNS field in Settings. Takes effect on the next
+/// `init_dns_client` (i.e. next tunnel start); already-resolved cache
+/// entries persist.
+pub fn set_user_upstreams(addrs: Vec<SocketAddr>) {
+    *USER_UPSTREAMS.lock() = Some(addrs);
+}
+
+pub fn init_dns_client() {
+    DNS_CLIENT.get_or_init(|| {
+        let china_upstreams = read_china_upstreams();
+        let upstreams = effective_upstreams();
+        info!(
+            "TCP DNS client (in-process dispatch): upstreams={:?}",
+            upstreams
+        );
 
         let home_dir_for_geoip = {
             let home_dir = crate::HOME_DIR.lock();
@@ -156,19 +176,12 @@ pub fn init_doh_client() {
         };
         hydrate_in_memory_from_disk();
 
-        // Wire the trust-china-dns split-horizon layer.
+        // Wire the trust-china-dns split-horizon layer. Reads `Country.mmdb`
+        // from the same `$HOME_DIR/mihomo/` path mihomo's engine uses; if the
+        // file is missing the orchestrator quietly degrades to direct-only.
         crate::china_dns::init(home_dir_for_geoip.as_deref(), china_upstreams);
 
-        let mut tls_config = ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(NoCertVerify))
-            .with_no_client_auth();
-        tls_config.alpn_protocols = vec![b"h2".to_vec()];
-
-        DohClient {
-            doh_urls,
-            tls_config: Arc::new(tls_config),
-        }
+        DnsClient { upstreams }
     });
 }
 
@@ -189,11 +202,11 @@ fn hydrate_in_memory_from_disk() {
         }
         cache.insert(k, (bytes, now + ttl));
     }
-    info!("doh cache: hydrated {} entries from disk", cache.len());
+    info!("dns cache: hydrated {} entries from disk", cache.len());
 }
 
-pub async fn resolve_via_doh(query: &[u8]) -> Option<Vec<u8>> {
-    let client = DOH_CLIENT.get()?;
+pub async fn resolve_via_tcp_dns(query: &[u8]) -> Option<Vec<u8>> {
+    let client = DNS_CLIENT.get()?;
 
     let key = question_section(query).map(|q| q.to_vec());
 
@@ -247,7 +260,7 @@ pub async fn resolve_via_doh(query: &[u8]) -> Option<Vec<u8>> {
         None => None,
     };
 
-    let result = run_doh_attempts(client, query).await;
+    let result = run_attempts(client, query).await;
 
     if let (Some(k), Some(bytes)) = (key.as_ref(), result.as_ref()) {
         let ttl = cache_ttl(bytes);
@@ -280,181 +293,78 @@ pub async fn resolve_via_doh(query: &[u8]) -> Option<Vec<u8>> {
     result
 }
 
-async fn run_doh_attempts(client: &DohClient, query: &[u8]) -> Option<Vec<u8>> {
-    for url in &client.doh_urls {
+async fn run_attempts(client: &DnsClient, query: &[u8]) -> Option<Vec<u8>> {
+    for upstream in &client.upstreams {
         match tokio::time::timeout(
-            Duration::from_secs(DOH_TIMEOUT_SECS),
-            send_doh(client, url, query),
+            Duration::from_secs(DNS_TIMEOUT_SECS),
+            send_query(*upstream, query),
         )
         .await
         {
             Ok(Ok(bytes)) => return Some(bytes),
-            Ok(Err(e)) => warn!("DoH request failed to {}: {}", url, e),
-            Err(_) => {
-                warn!("DoH request timed out to {}", url);
-                evict_pool_entry(url);
-            }
+            Ok(Err(e)) => warn!("TCP DNS request failed to {}: {}", upstream, e),
+            Err(_) => warn!("TCP DNS request timed out to {}", upstream),
         }
     }
 
-    logging::bridge_log("DoH: all servers failed");
+    logging::bridge_log("DNS: all upstreams failed");
     None
 }
 
-const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
-
-struct PoolEntry {
-    sender: http2::SendRequest<Full<Bytes>>,
-    last_used: Instant,
-    _flow_guard: AbortOnDrop,
-    _driver_guard: AbortOnDrop,
-}
-
-type Pool = Mutex<HashMap<String, PoolEntry>>;
-
-fn pool() -> &'static Pool {
-    static P: OnceLock<Pool> = OnceLock::new();
-    P.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-async fn send_doh(client: &DohClient, url: &str, query: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
-    match try_send(client, url, query).await {
-        Ok(bytes) => Ok(bytes),
-        Err(e) => {
-            evict_pool_entry(url);
-            if is_conn_error(&e) {
-                try_send(client, url, query).await.inspect_err(|_| {
-                    evict_pool_entry(url);
-                })
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-async fn try_send(client: &DohClient, url: &str, query: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
-    let uri: Uri = url.parse()?;
-    let mut sender = acquire_sender(client, url, &uri).await?;
-
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri(&uri)
-        .header(CONTENT_TYPE, "application/dns-message")
-        .header(ACCEPT, "application/dns-message")
-        .body(Full::new(Bytes::copy_from_slice(query)))?;
-
-    let resp = sender.send_request(req).await?;
-    if !resp.status().is_success() {
-        anyhow::bail!("HTTP {}", resp.status());
-    }
-    let body = resp.into_body().collect().await?.to_bytes();
-    Ok(body.to_vec())
-}
-
-fn is_conn_error(err: &anyhow::Error) -> bool {
-    if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
-        return hyper_err.is_closed()
-            || hyper_err.is_canceled()
-            || hyper_err.is_incomplete_message();
-    }
-    false
-}
-
-fn evict_pool_entry(url: &str) {
-    pool().lock().remove(url);
-}
-
-async fn acquire_sender(
-    client: &DohClient,
-    url: &str,
-    uri: &Uri,
-) -> Result<http2::SendRequest<Full<Bytes>>, anyhow::Error> {
-    {
-        let mut p = pool().lock();
-        sweep_pool(&mut p);
-        if let Some(entry) = p.get_mut(url) {
-            entry.last_used = Instant::now();
-            return Ok(entry.sender.clone());
-        }
-    }
-
-    let new_entry = open_connection(client, uri).await?;
-    let sender = new_entry.sender.clone();
-
-    let mut p = pool().lock();
-    if let Some(existing) = p.get_mut(url) {
-        if !existing.sender.is_closed() {
-            existing.last_used = Instant::now();
-            return Ok(existing.sender.clone());
-        }
-    }
-    p.insert(url.to_string(), new_entry);
-    Ok(sender)
-}
-
-fn sweep_pool(p: &mut HashMap<String, PoolEntry>) {
-    let now = Instant::now();
-    p.retain(|_, e| !e.sender.is_closed() && now.duration_since(e.last_used) < POOL_IDLE_TIMEOUT);
-}
-
-async fn open_connection(client: &DohClient, uri: &Uri) -> Result<PoolEntry, anyhow::Error> {
-    let scheme = uri.scheme_str().unwrap_or("");
-    if scheme != "https" {
-        anyhow::bail!("non-https DoH URL: {}", uri);
-    }
-    let host = uri
-        .host()
-        .ok_or_else(|| anyhow::anyhow!("URL missing host"))?
-        .to_string();
-    let port = uri.port_u16().unwrap_or(443);
-
+/// One TCP DNS round-trip over a fresh mihomo flow: open duplex, hand the
+/// far end to `handle_tcp`, write [u16 length][query], read [u16 length]
+/// [response]. Connection is single-use — TCP-DNS pipelining (RFC 7766)
+/// would require txid demux that the answer cache + single-flight already
+/// obviates for the burst patterns we see.
+async fn send_query(upstream: SocketAddr, query: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
     let tunnel = engine::tunnel().ok_or_else(|| anyhow::anyhow!("engine not running"))?;
 
-    let dst_ip = host.parse().ok();
+    // Mirror tun2socks's metadata. Upstream is always an IP literal here, so
+    // `dst_ip` is populated and `host` left empty — mihomo doesn't try to
+    // re-resolve.
     let metadata = Metadata {
         network: Network::Tcp,
         conn_type: ConnType::Inner,
         src_ip: None,
         src_port: 0,
-        dst_ip,
-        dst_port: port,
-        host: if dst_ip.is_some() {
-            String::new()
-        } else {
-            host.clone()
-        },
+        dst_ip: Some(upstream.ip()),
+        dst_port: upstream.port(),
+        host: String::new(),
         ..Default::default()
     };
 
     let (left, right) = tokio::io::duplex(DUPLEX_BUF_SIZE);
     let proxy_conn: Box<dyn ProxyConn> = Box::new(DuplexConn(right));
     let inner = tunnel.inner().clone();
-    let flow_guard = AbortOnDrop(tokio::spawn(async move {
+    let _flow_guard = AbortOnDrop(tokio::spawn(async move {
         mihomo_tunnel::tcp::handle_tcp(&inner, proxy_conn, metadata).await;
     }));
 
-    let server_name = ServerName::try_from(host)?;
-    let tls_stream = TlsConnector::from(client.tls_config.clone())
-        .connect(server_name, left)
-        .await?;
+    let mut stream = left;
 
-    let (sender, conn) = http2::handshake(TokioExecutor::new(), TokioIo::new(tls_stream)).await?;
-    let driver_guard = AbortOnDrop(tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            warn!("DoH connection driver error: {}", e);
-        }
-    }));
+    let qlen = u16::try_from(query.len()).map_err(|_| anyhow::anyhow!("DNS query too large"))?;
+    let mut framed = Vec::with_capacity(2 + query.len());
+    framed.extend_from_slice(&qlen.to_be_bytes());
+    framed.extend_from_slice(query);
+    stream.write_all(&framed).await?;
+    stream.flush().await?;
 
-    Ok(PoolEntry {
-        sender,
-        last_used: Instant::now(),
-        _flow_guard: flow_guard,
-        _driver_guard: driver_guard,
-    })
+    let mut len_buf = [0u8; 2];
+    stream.read_exact(&mut len_buf).await?;
+    let resp_len = u16::from_be_bytes(len_buf) as usize;
+    if resp_len == 0 {
+        anyhow::bail!("upstream returned zero-length response");
+    }
+    let mut resp = vec![0u8; resp_len];
+    stream.read_exact(&mut resp).await?;
+    // Best-effort half-close so the mihomo flow drains promptly. The abort
+    // guard tears it down on drop regardless.
+    let _ = stream.shutdown().await;
+    Ok(resp)
 }
 
-// `ProxyConn` requires the wrapper to be local (orphan rule).
+/// `ProxyConn` requires the wrapper to be local (orphan rule), so we hand
+/// mihomo this newtype around tokio's `DuplexStream`.
 struct DuplexConn(DuplexStream);
 
 impl AsyncRead for DuplexConn {
@@ -487,54 +397,64 @@ impl AsyncWrite for DuplexConn {
 
 impl ProxyConn for DuplexConn {}
 
-#[derive(Debug)]
-struct NoCertVerify;
+/// Built-in defaults used when the user has not configured any upstream in
+/// the Settings view (or when their input fails to parse).
+fn default_upstreams() -> Vec<SocketAddr> {
+    DEFAULT_UPSTREAMS
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
 
-impl ServerCertVerifier for NoCertVerify {
-    fn verify_server_cert(
-        &self,
-        _: &CertificateDer<'_>,
-        _: &[CertificateDer<'_>],
-        _: &ServerName<'_>,
-        _: &[u8],
-        _: UnixTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        Ok(ServerCertVerified::assertion())
+/// Resolve the upstream list at `init_dns_client` time: prefer the user's
+/// Settings-driven list (if any), otherwise fall back to the built-in
+/// defaults (1.1.1.1 / 8.8.8.8). The trusted-resolver upstream pool is no
+/// longer read from `config.yaml` — only the Kotlin Settings view writes it.
+fn effective_upstreams() -> Vec<SocketAddr> {
+    let user = USER_UPSTREAMS.lock().clone().unwrap_or_default();
+    if !user.is_empty() {
+        return user;
     }
+    default_upstreams()
+}
 
-    fn verify_tls12_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer<'_>,
-        _: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
+/// Parse a comma- or whitespace-separated list of upstream entries (`host`
+/// or `host:port`, port defaults to 53) into a deduplicated `SocketAddr`
+/// vector. Empty / whitespace-only input yields an empty vec.
+pub(crate) fn parse_upstreams_csv(input: &str) -> Vec<SocketAddr> {
+    let mut out: Vec<SocketAddr> = Vec::new();
+    for raw in input.split(|c: char| c == ',' || c.is_whitespace()) {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        // Drop legacy DoH/DoT/DoQ schemes — this client speaks plain TCP only.
+        if raw.starts_with("https://")
+            || raw.starts_with("tls://")
+            || raw.starts_with("quic://")
+            || raw.starts_with("h3://")
+        {
+            continue;
+        }
+        let stripped = raw
+            .strip_prefix("tcp://")
+            .or_else(|| raw.strip_prefix("dns://"))
+            .unwrap_or(raw);
+        let with_port = if stripped.contains(':') {
+            stripped.to_string()
+        } else {
+            format!("{}:53", stripped)
+        };
+        match with_port.parse::<SocketAddr>() {
+            Ok(addr) => {
+                if !out.contains(&addr) {
+                    out.push(addr);
+                }
+            }
+            Err(e) => warn!("DNS: ignoring malformed upstream {:?}: {}", raw, e),
+        }
     }
-
-    fn verify_tls13_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer<'_>,
-        _: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        vec![
-            SignatureScheme::RSA_PKCS1_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::ED25519,
-            SignatureScheme::ED448,
-        ]
-    }
+    out
 }
 
 #[derive(serde::Deserialize)]
@@ -544,83 +464,45 @@ struct MinimalConfig {
 
 #[derive(serde::Deserialize)]
 struct MinimalDns {
-    nameserver: Option<Vec<serde_yaml::Value>>,
-    fallback: Option<Vec<serde_yaml::Value>>,
     /// `china_dns`-only field — Chinese plain-UDP nameservers, raced
     /// first-response-wins. `None` (key missing) → use built-in defaults
     /// (DNSPod + AliDNS). `Some(empty)` → disable the split entirely.
     china_nameserver: Option<Vec<serde_yaml::Value>>,
 }
 
-fn default_doh_urls() -> Vec<String> {
-    IP_BASED_DOH_URLS.iter().map(|s| s.to_string()).collect()
-}
-
-/// Reads `config.yaml` once for both the DoH upstream pool and the China-side
-/// UDP nameservers consumed by `china_dns::init`.
-fn read_dns_config() -> (Vec<String>, Vec<std::net::SocketAddr>) {
+/// Reads `dns.china_nameserver` from `config.yaml` for the split-horizon
+/// path. Returns the built-in defaults on any error or absence. The
+/// trusted-resolver upstream pool is configured separately from the Kotlin
+/// Settings view (`nativeSetDnsUpstreams`), not from YAML.
+fn read_china_upstreams() -> Vec<SocketAddr> {
     let home_dir = crate::HOME_DIR.lock();
     let config_path = match home_dir.as_ref() {
         Some(dir) => format!("{}/config.yaml", dir),
-        None => {
-            info!("DoH: no HOME_DIR, using default URLs");
-            return (
-                default_doh_urls(),
-                crate::china_dns::default_china_upstreams(),
-            );
-        }
+        None => return crate::china_dns::default_china_upstreams(),
     };
     drop(home_dir);
 
     let config_str = match std::fs::read_to_string(&config_path) {
         Ok(s) => s,
-        Err(e) => {
-            warn!("DoH: cannot read {}: {}", config_path, e);
-            return (
-                default_doh_urls(),
-                crate::china_dns::default_china_upstreams(),
-            );
-        }
+        Err(_) => return crate::china_dns::default_china_upstreams(),
     };
 
     let config: MinimalConfig = match serde_yaml::from_str(&config_str) {
         Ok(c) => c,
         Err(e) => {
-            warn!("DoH: cannot parse config: {}", e);
-            return (
-                default_doh_urls(),
-                crate::china_dns::default_china_upstreams(),
-            );
+            warn!("china_dns: cannot parse config: {}", e);
+            return crate::china_dns::default_china_upstreams();
         }
     };
 
-    let mut urls = Vec::new();
-    let mut china = None;
-    if let Some(dns) = config.dns {
-        for list in [dns.nameserver, dns.fallback].into_iter().flatten() {
-            for entry in list {
-                if let serde_yaml::Value::String(s) = entry {
-                    if s.starts_with("https://") && !urls.contains(&s) {
-                        urls.push(s);
-                    }
-                }
-            }
-        }
-        china = dns.china_nameserver.map(parse_china_upstreams);
-    }
-
-    for fallback in IP_BASED_DOH_URLS {
-        let s = fallback.to_string();
-        if !urls.contains(&s) {
-            urls.push(s);
-        }
-    }
-
-    let china_upstreams = china.unwrap_or_else(crate::china_dns::default_china_upstreams);
-    (urls, china_upstreams)
+    config
+        .dns
+        .and_then(|d| d.china_nameserver)
+        .map(parse_china_upstreams)
+        .unwrap_or_else(crate::china_dns::default_china_upstreams)
 }
 
-fn parse_china_upstreams(values: Vec<serde_yaml::Value>) -> Vec<std::net::SocketAddr> {
+fn parse_china_upstreams(values: Vec<serde_yaml::Value>) -> Vec<SocketAddr> {
     let mut out = Vec::with_capacity(values.len());
     for entry in values {
         let serde_yaml::Value::String(raw) = entry else {
@@ -631,7 +513,7 @@ fn parse_china_upstreams(values: Vec<serde_yaml::Value>) -> Vec<std::net::Socket
         } else {
             format!("{}:53", raw)
         };
-        match with_port.parse::<std::net::SocketAddr>() {
+        match with_port.parse::<SocketAddr>() {
             Ok(addr) => {
                 if !out.contains(&addr) {
                     out.push(addr);
@@ -648,6 +530,11 @@ fn parse_china_upstreams(values: Vec<serde_yaml::Value>) -> Vec<std::net::Socket
 
 // ---------------------------------------------------------------------------
 // External cache hooks for `china_dns`.
+//
+// `china_dns` shares the same answer cache as the trusted-resolver path so
+// that whichever upstream "won" a given (qname, qtype) query — Chinese UDP
+// or trusted TCP DNS — the next identical query within the TTL window
+// short-circuits without re-running orchestration.
 // ---------------------------------------------------------------------------
 
 pub(crate) fn cache_lookup_for_external(query: &[u8]) -> Option<Vec<u8>> {
