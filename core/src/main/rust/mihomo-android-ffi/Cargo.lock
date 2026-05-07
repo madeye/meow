@@ -1604,8 +1604,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-api"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "arc-swap",
  "axum",
@@ -1637,8 +1637,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-common"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1658,8 +1658,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-config"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1688,8 +1688,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-dns"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1747,8 +1747,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-rules"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "ipnet",
  "iprange",
@@ -1764,8 +1764,8 @@ dependencies = [
 
 [[package]]
 name = "mihomo-transport"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "async-trait",
  "base64",
@@ -1788,13 +1788,13 @@ dependencies = [
 
 [[package]]
 name = "mihomo-trie"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 
 [[package]]
 name = "mihomo-tunnel"
-version = "0.6.0"
-source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.0#0b100bca1c2d4988fd76b2339a0e556ee3ebf355"
+version = "0.6.1"
+source = "git+https://github.com/madeye/mihomo-rust.git?tag=v0.6.1#272c27d9b51f616a860ae98e1cf9fb88870bb58e"
 dependencies = [
  "async-trait",
  "bytes",

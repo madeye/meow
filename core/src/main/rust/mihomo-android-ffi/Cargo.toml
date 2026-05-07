@@ -18,12 +18,12 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-# Embedded mihomo-rust engine. Pinned to v0.6.0 (matches meow-ios).
-mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
-mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
-mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.0" }
+# Embedded mihomo-rust engine. Pinned to v0.6.1 (matches meow-ios).
+mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
 # Local fork of mihomo-proxy with the Android `set_pre_connect_hook` patch.
 mihomo-proxy = { path = "../mihomo-proxy-patched" }
 
