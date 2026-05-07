@@ -20,8 +20,16 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.info_outline),
             title: Text(s.version),
             subtitle: FutureBuilder<String?>(
+              future: _method.invokeMethod<String>('getAppVersion'),
+              builder: (_, snap) => Text(snap.data ?? '...'),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.memory),
+            title: Text(s.engine),
+            subtitle: FutureBuilder<String?>(
               future: _method.invokeMethod<String>('getVersion'),
-              builder: (_, snap) => Text(snap.data ?? 'Loading...'),
+              builder: (_, snap) => Text(snap.data ?? '...'),
             ),
           ),
           ListTile(
@@ -39,16 +47,6 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.dns),
             title: Text(s.dnsServer),
             subtitle: Text(s.dnsBuiltIn),
-          ),
-          ListTile(
-            leading: const Icon(Icons.hub),
-            title: Text(s.mixedPort),
-            subtitle: Text(s.mixedPortDesc),
-          ),
-          ListTile(
-            leading: const Icon(Icons.api),
-            title: Text(s.apiController),
-            subtitle: Text(s.apiAddr),
           ),
           _SectionHeader(s.about),
           ListTile(

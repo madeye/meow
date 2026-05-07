@@ -213,8 +213,8 @@ class MihomoApi {
         jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  /// NOTE: The Rust-based mihomo engine used in mihomo-android does NOT expose
-  /// the /memory endpoint (that endpoint is Go-specific in meow-go). Callers
+  /// NOTE: The Rust-based mihomo engine used here does NOT expose the
+  /// /memory endpoint (that endpoint is Go-specific in meow-go). Callers
   /// already catch MihomoApiException silently, so no code change is needed —
   /// this will simply throw on every call with an HTTP error.
   Future<MemoryInfo> getMemory() async {

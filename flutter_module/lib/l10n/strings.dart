@@ -81,21 +81,13 @@ class S {
   String get settings => 'Settings';
   String get general => 'General';
   String get version => 'Version';
+  String get engine => 'Engine';
   String get network => 'Network';
   String get dnsServer => 'DNS Server';
-  String get dnsBuiltIn => 'DoH via tun2socks';
-  String get dohDefault => 'Default (1.1.1.1 / 8.8.8.8)';
-  String get dohCustom => 'Custom DoH URL';
-  String get dohDialogTitle => 'DoH Server';
-  String get dohHint => 'https://1.1.1.1/dns-query';
-  String get dohInvalidUrl => 'URL must start with https://';
-  String get mixedPort => 'Mixed Port';
-  String get mixedPortDesc => '7890 (SOCKS5 + HTTP)';
-  String get apiController => 'API Controller';
-  String get apiAddr => '127.0.0.1:9090';
+  String get dnsBuiltIn => 'Plain TCP via tunnel';
   String get about => 'About';
   String get sourceCode => 'Source Code';
-  String get sourceCodeUrl => 'github.com/madeye/mihomo-android';
+  String get sourceCodeUrl => 'github.com/madeye/meow';
   String get memoryUsage => 'Memory Usage';
   String memoryStats(int inuse, int limit) =>
       '${(inuse / 1048576).toStringAsFixed(1)} MB / ${(limit / 1048576).toStringAsFixed(1)} MB';
@@ -139,24 +131,6 @@ class S {
   String get retry => 'Retry';
   String get engineOffline => 'Engine offline';
   String get versionUnavailable => 'Not available';
-
-  // Diagnostics
-  String get diagnostics => 'Diagnostics';
-  String get diagDirectTcp => 'Direct TCP';
-  String get diagDirectTcpDesc =>
-      'TCP connect to 1.1.1.1:80 bypassing the proxy';
-  String get diagProxyHttp => 'Proxy HTTP';
-  String get diagProxyHttpDesc =>
-      'HTTP GET via local mihomo proxy (127.0.0.1:7890)';
-  String get diagDnsResolver => 'DNS Resolver';
-  String get diagDnsResolverDesc =>
-      'DNS lookup via tun2socks DoH (127.0.0.1:1053)';
-  String get diagDnsQuery => 'DNS Query';
-  String get diagDnsQueryDesc =>
-      'Live DNS query via mihomo engine for example.com';
-  String get diagRun => 'Run';
-  String get diagRunning => 'Running...';
-  String get diagNotRun => '—';
 
   // Providers
   String get providers => 'Providers';
@@ -319,35 +293,19 @@ class _Zh extends S {
   @override
   String get version => '版本';
   @override
+  String get engine => '引擎';
+  @override
   String get network => '网络';
   @override
   String get dnsServer => 'DNS 服务器';
   @override
-  String get dnsBuiltIn => '通过 tun2socks DoH 转发';
-  @override
-  String get dohDefault => '默认（1.1.1.1 / 8.8.8.8）';
-  @override
-  String get dohCustom => '自定义 DoH 地址';
-  @override
-  String get dohDialogTitle => 'DoH 服务器';
-  @override
-  String get dohHint => 'https://1.1.1.1/dns-query';
-  @override
-  String get dohInvalidUrl => '地址必须以 https:// 开头';
-  @override
-  String get mixedPort => '混合端口';
-  @override
-  String get mixedPortDesc => '7890（SOCKS5 + HTTP）';
-  @override
-  String get apiController => 'API 控制器';
-  @override
-  String get apiAddr => '127.0.0.1:9090';
+  String get dnsBuiltIn => '通过隧道走纯 TCP';
   @override
   String get about => '关于';
   @override
   String get sourceCode => '源代码';
   @override
-  String get sourceCodeUrl => 'github.com/madeye/mihomo-android';
+  String get sourceCodeUrl => 'github.com/madeye/meow';
   @override
   String get memoryUsage => '内存使用';
   @override
@@ -421,32 +379,6 @@ class _Zh extends S {
   String get engineOffline => '引擎离线';
   @override
   String get versionUnavailable => '不可用';
-
-  // Diagnostics
-  @override
-  String get diagnostics => '诊断';
-  @override
-  String get diagDirectTcp => '直连 TCP';
-  @override
-  String get diagDirectTcpDesc => '直接 TCP 连接至 1.1.1.1:80（绕过代理）';
-  @override
-  String get diagProxyHttp => '代理 HTTP';
-  @override
-  String get diagProxyHttpDesc => '通过本地 mihomo 代理（127.0.0.1:7890）发起 HTTP 请求';
-  @override
-  String get diagDnsResolver => 'DNS 解析器';
-  @override
-  String get diagDnsResolverDesc => '通过 tun2socks DoH（127.0.0.1:1053）进行 DNS 查询';
-  @override
-  String get diagDnsQuery => 'DNS 查询';
-  @override
-  String get diagDnsQueryDesc => '通过 mihomo 引擎对 example.com 进行实时 DNS 查询';
-  @override
-  String get diagRun => '运行';
-  @override
-  String get diagRunning => '运行中...';
-  @override
-  String get diagNotRun => '—';
 
   // Providers
   @override

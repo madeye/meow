@@ -193,6 +193,24 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                             result.success("unknown")
                         }
                     }
+                    "getAppVersion" -> {
+                        // App-level version — what the user expects under
+                        // "Version" in Settings. nativeVersion() reports the
+                        // embedded engine and is exposed separately.
+                        try {
+                            val pkg = packageManager.getPackageInfo(packageName, 0)
+                            val versionName = pkg.versionName ?: "?"
+                            val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                                pkg.longVersionCode
+                            } else {
+                                @Suppress("DEPRECATION")
+                                pkg.versionCode.toLong()
+                            }
+                            result.success("$versionName ($versionCode)")
+                        } catch (_: Exception) {
+                            result.success("unknown")
+                        }
+                    }
                     "getInstalledApps" -> {
                         scope.launch(Dispatchers.IO) {
                             val pm = packageManager
