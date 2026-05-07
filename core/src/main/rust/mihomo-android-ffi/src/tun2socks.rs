@@ -1,22 +1,28 @@
-//! tun2socks using netstack-smoltcp: reads raw IP packets from the Android TUN fd,
-//! routes TCP through a userspace TCP/IP stack (smoltcp) and forwards via SOCKS5
-//! to the local mihomo mixed listener. UDP DNS is short-circuited to a plain-TCP
-//! DNS client dispatched in-process through `mihomo_tunnel::tcp::handle_tcp`.
+//! tun2socks using netstack-smoltcp: reads raw IP packets from the Android TUN
+//! fd, routes TCP through a userspace TCP/IP stack (smoltcp) and dispatches
+//! every accepted flow in-process via `mihomo_tunnel::tcp::handle_tcp` — same
+//! pattern meow-ios uses, with no SOCKS5 loopback hop. UDP/53 is intercepted
+//! and answered by the in-process plain-TCP DNS client (`dns_client.rs`),
+//! itself dispatching through `handle_tcp` so DNS reuses the tunnel's rule
+//! engine and proxy selectors.
 
 use crate::china_dns;
 use crate::dns_client;
 use crate::dns_table;
+use crate::engine;
 use crate::logging;
 use futures::{SinkExt, StreamExt};
+use mihomo_common::{ConnType, Metadata, Network, ProxyConn};
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::os::raw::c_void;
 use std::os::unix::io::RawFd;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, info, warn};
 
@@ -52,16 +58,15 @@ fn warn_capped(slot: &AtomicU64, msg: &str) {
     }
 }
 
-pub fn start(fd: i32, socks_port: u16, _dns_port: u16) -> Result<(), String> {
+pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
     if TUN2SOCKS_RUNNING.swap(true, Ordering::SeqCst) {
         return Err("tun2socks already running".into());
     }
 
-    let socks_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, socks_port));
-    info!("tun2socks starting: fd={}, socks={}", fd, socks_addr);
+    info!("tun2socks starting: fd={}", fd);
     // TCP DNS dispatches per-request through `mihomo_tunnel::tcp::handle_tcp`
-    // — same in-process Rust-to-Rust path as the netstack TCP flows below
-    // (modulo the SOCKS hop), so no extra loopback port is involved for DNS.
+    // — same in-process Rust-to-Rust path as the netstack TCP flows below, so
+    // no extra loopback port is involved for DNS either.
     dns_client::init_dns_client();
 
     unsafe {
@@ -71,7 +76,7 @@ pub fn start(fd: i32, socks_port: u16, _dns_port: u16) -> Result<(), String> {
 
     let rt = crate::get_runtime();
     rt.spawn(async move {
-        if let Err(e) = run_tun2socks(fd, socks_addr).await {
+        if let Err(e) = run_tun2socks(fd).await {
             logging::bridge_log(&format!("tun2socks error: {}", e));
         }
         TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
@@ -95,7 +100,7 @@ pub fn stop() {
 // "stack driver" task that owns the Stack and multiplexes both directions.
 // ---------------------------------------------------------------------------
 
-async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
+async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
     logging::bridge_log("tun2socks: building netstack-smoltcp stack");
 
     let (mut stack, tcp_runner, _udp_socket, tcp_listener) = StackBuilder::default()
@@ -158,13 +163,12 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
         }
     });
 
-    // Task 3: Accept TCP connections → SOCKS5 relay
+    // Task 3: Accept TCP connections → in-process tunnel dispatch
     let tcp_accept_handle = tokio::spawn(async move {
         while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
-            let sa = socks_addr;
             logging::bridge_log(&format!("tun2socks: TCP {} -> {}", local_addr, remote_addr));
             tokio::spawn(async move {
-                handle_tcp_stream(stream, local_addr, remote_addr, sa).await;
+                handle_tcp_stream(stream, local_addr, remote_addr).await;
             });
         }
     });
@@ -276,121 +280,97 @@ async fn run_tun2socks(fd: RawFd, socks_addr: SocketAddr) -> io::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// TCP → SOCKS5 relay
+// TCP → in-process mihomo_tunnel dispatch
+//
+// One netstack flow → one `Metadata` → one `mihomo_tunnel::tcp::handle_tcp`
+// invocation. The netstack `TcpStream` is handed in as the inbound side of
+// the tunnel; mihomo opens the upstream proxy connection, copies bidirection-
+// ally, and updates per-flow stats / connection tracking. No SOCKS5 hop.
 // ---------------------------------------------------------------------------
 
 async fn handle_tcp_stream(
-    mut tun_stream: netstack_smoltcp::TcpStream,
+    stream: netstack_smoltcp::TcpStream,
     src_addr: SocketAddr,
     dst_addr: SocketAddr,
-    socks_addr: SocketAddr,
 ) {
-    let target = match dns_table::dns_table_lookup(dst_addr.ip()) {
-        Some(hostname) => SocksTarget::Domain(hostname, dst_addr.port()),
-        None => SocksTarget::Ip(dst_addr),
-    };
-
-    let target_desc = match &target {
-        SocksTarget::Domain(h, p) => format!("{}:{}", h, p),
-        SocksTarget::Ip(a) => format!("{}", a),
-    };
-    logging::bridge_log(&format!("SOCKS5 connect: {} -> {}", src_addr, target_desc));
-
-    let mut socks_stream = match socks5_connect(socks_addr, target).await {
-        Ok(s) => s,
-        Err(e) => {
-            logging::bridge_log(&format!(
-                "SOCKS5 FAIL: {} -> {} err={}",
-                src_addr, dst_addr, e
-            ));
+    let tunnel = match engine::tunnel() {
+        Some(t) => t,
+        None => {
+            warn!(
+                "tun2socks: TCP {} -> {} dropped: engine not running",
+                src_addr, dst_addr
+            );
             return;
         }
     };
 
-    match tokio::io::copy_bidirectional(&mut tun_stream, &mut socks_stream).await {
-        Ok((up, down)) => {
-            debug!("TCP relay done: {} up={} down={}", dst_addr, up, down);
-        }
-        Err(e) => {
-            debug!("TCP relay error: {} err={}", dst_addr, e);
-        }
+    // If the dst IP came from our DNS table (i.e. it's a fake-IP / cached
+    // resolution), use the original hostname so mihomo's rule engine and
+    // domain-aware proxy adapters (Trojan SNI, HTTP Host, etc.) see the real
+    // name. Otherwise pass the IP literal in `dst_ip`.
+    let (host, dst_ip) = match dns_table::dns_table_lookup(dst_addr.ip()) {
+        Some(h) => (h, None),
+        None => (String::new(), Some(dst_addr.ip())),
+    };
+
+    let target_desc = if !host.is_empty() {
+        format!("{}:{}", host, dst_addr.port())
+    } else {
+        format!("{}", dst_addr)
+    };
+    debug!("tun2socks: dispatch {} -> {}", src_addr, target_desc);
+
+    let metadata = Metadata {
+        network: Network::Tcp,
+        conn_type: ConnType::Inner,
+        src_ip: Some(src_addr.ip()),
+        src_port: src_addr.port(),
+        dst_ip,
+        dst_port: dst_addr.port(),
+        host,
+        ..Default::default()
+    };
+
+    let proxy_conn: Box<dyn ProxyConn> = Box::new(NetstackConn(stream));
+    let inner = tunnel.inner().clone();
+    mihomo_tunnel::tcp::handle_tcp(&inner, proxy_conn, metadata).await;
+    debug!("tun2socks: flow done {} -> {}", src_addr, target_desc);
+}
+
+/// `ProxyConn` requires an orphan-rule-friendly local type, so we wrap
+/// netstack's `TcpStream` in a newtype. The blanket `AsyncRead`/`AsyncWrite`
+/// impls are forwarded straight through; netstack already provides them.
+struct NetstackConn(netstack_smoltcp::TcpStream);
+
+impl AsyncRead for NetstackConn {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
     }
 }
 
-// ---------------------------------------------------------------------------
-// SOCKS5 client
-// ---------------------------------------------------------------------------
+impl AsyncWrite for NetstackConn {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
 
-enum SocksTarget {
-    Ip(SocketAddr),
-    Domain(String, u16),
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
+    }
 }
 
-async fn socks5_connect(proxy: SocketAddr, target: SocksTarget) -> io::Result<TcpStream> {
-    let mut stream = TcpStream::connect(proxy).await?;
-
-    stream.write_all(&[0x05, 0x01, 0x00]).await?;
-    let mut resp = [0u8; 2];
-    stream.read_exact(&mut resp).await?;
-    if resp[0] != 0x05 || resp[1] != 0x00 {
-        return Err(io::Error::other("SOCKS5 auth failed"));
-    }
-
-    match &target {
-        SocksTarget::Ip(dst) => match dst {
-            SocketAddr::V4(v4) => {
-                let ip = v4.ip().octets();
-                let port = v4.port().to_be_bytes();
-                stream
-                    .write_all(&[
-                        0x05, 0x01, 0x00, 0x01, ip[0], ip[1], ip[2], ip[3], port[0], port[1],
-                    ])
-                    .await?;
-            }
-            SocketAddr::V6(v6) => {
-                let mut req = vec![0x05, 0x01, 0x00, 0x04];
-                req.extend_from_slice(&v6.ip().octets());
-                req.extend_from_slice(&v6.port().to_be_bytes());
-                stream.write_all(&req).await?;
-            }
-        },
-        SocksTarget::Domain(domain, port) => {
-            let db = domain.as_bytes();
-            let mut req = Vec::with_capacity(4 + 1 + db.len() + 2);
-            req.extend_from_slice(&[0x05, 0x01, 0x00, 0x03, db.len() as u8]);
-            req.extend_from_slice(db);
-            req.extend_from_slice(&port.to_be_bytes());
-            stream.write_all(&req).await?;
-        }
-    }
-
-    let mut rh = [0u8; 4];
-    stream.read_exact(&mut rh).await?;
-    if rh[0] != 0x05 || rh[1] != 0x00 {
-        return Err(io::Error::other(format!(
-            "SOCKS5 CONNECT failed: rep={}",
-            rh[1]
-        )));
-    }
-    match rh[3] {
-        0x01 => {
-            let mut b = [0u8; 6];
-            stream.read_exact(&mut b).await?;
-        }
-        0x03 => {
-            let mut l = [0u8; 1];
-            stream.read_exact(&mut l).await?;
-            let mut b = vec![0u8; l[0] as usize + 2];
-            stream.read_exact(&mut b).await?;
-        }
-        0x04 => {
-            let mut b = [0u8; 18];
-            stream.read_exact(&mut b).await?;
-        }
-        _ => {}
-    }
-    Ok(stream)
-}
+impl ProxyConn for NetstackConn {}
 
 // ---------------------------------------------------------------------------
 // UDP helpers

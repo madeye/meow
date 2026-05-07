@@ -1,12 +1,7 @@
-//! Engine accessor — exposes the running `Tunnel` so the in-process TCP DNS
-//! client and china_dns split layer can dispatch flows through
-//! `mihomo_tunnel::tcp::handle_tcp` without re-implementing the NAT/proxy
-//! routing logic.
-//!
-//! Android keeps the SOCKS5 loopback (MixedListener) for ordinary tun2socks
-//! TCP traffic — this accessor exists only for the in-process DNS path,
-//! which mirrors iOS and avoids a chicken-and-egg dependency on the mixed
-//! listener at startup.
+//! Engine accessor — exposes the running `Tunnel` so tun2socks, the
+//! in-process TCP DNS client, and the china_dns split layer can dispatch
+//! flows through `mihomo_tunnel::tcp::handle_tcp` without re-implementing
+//! the NAT/proxy routing logic. Mirrors meow-ios `engine::tunnel()`.
 
 use mihomo_tunnel::Tunnel;
 

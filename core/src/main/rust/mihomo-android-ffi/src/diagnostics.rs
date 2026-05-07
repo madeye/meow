@@ -1,7 +1,6 @@
 use jni::objects::JClass;
 use jni::sys::jstring;
 use jni::JNIEnv;
-use std::io::{Read, Write};
 use std::net::{TcpStream, UdpSocket};
 use std::time::{Duration, Instant};
 
@@ -38,42 +37,6 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeTestDire
             let elapsed = start.elapsed();
             result_to_jstring(&mut env, &format!("FAIL after {:?}: {}", elapsed, e))
         }
-    }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeTestProxyHttp(
-    mut env: JNIEnv,
-    _class: JClass,
-    url: jni::objects::JString,
-) -> jstring {
-    let target_url: String = env.get_string(&url).map(|s| s.into()).unwrap_or_default();
-    let proxy_addr = "127.0.0.1:7890";
-    let conn =
-        match TcpStream::connect_timeout(&proxy_addr.parse().unwrap(), Duration::from_secs(5)) {
-            Ok(c) => c,
-            Err(e) => return result_to_jstring(&mut env, &format!("FAIL proxy connect: {}", e)),
-        };
-    let _ = conn.set_read_timeout(Some(Duration::from_secs(10)));
-    let _ = conn.set_write_timeout(Some(Duration::from_secs(10)));
-
-    let req = format!(
-        "GET {} HTTP/1.1\r\nHost: www.baidu.com\r\nConnection: close\r\n\r\n",
-        target_url
-    );
-    let mut conn = conn;
-    if let Err(e) = conn.write_all(req.as_bytes()) {
-        return result_to_jstring(&mut env, &format!("FAIL proxy write: {}", e));
-    }
-
-    let mut buf = vec![0u8; 512];
-    match conn.read(&mut buf) {
-        Ok(n) => {
-            let resp = String::from_utf8_lossy(&buf[..n]);
-            let first_line = resp.lines().next().unwrap_or("");
-            result_to_jstring(&mut env, &format!("OK: {}", first_line))
-        }
-        Err(e) => result_to_jstring(&mut env, &format!("FAIL proxy read: {}", e)),
     }
 }
 

@@ -87,7 +87,7 @@ class MihomoInstance(val profile: ClashProfile) {
     }
 
     fun startTun2Socks(vpnService: android.net.VpnService, fd: Int) {
-        val result = MihomoCore.nativeStartTun2Socks(vpnService, fd, 7890, 1053)
+        val result = MihomoCore.nativeStartTun2Socks(vpnService, fd, 1053)
         if (result != 0) {
             throw RuntimeException("Failed to start tun2socks: ${MihomoCore.nativeGetLastError()}")
         }

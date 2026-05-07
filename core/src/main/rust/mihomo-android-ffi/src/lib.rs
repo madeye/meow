@@ -1,14 +1,13 @@
 //! Rust half of the meow-android native stack — JNI surface for the Kotlin
 //! VPN service.
 //!
-//! Embeds the mihomo-rust v0.6.0 proxy engine (with a local fork of
+//! Embeds the mihomo-rust v0.6.1 proxy engine (with a local fork of
 //! `mihomo-proxy` carrying the `set_pre_connect_hook` patch) and the
-//! tun2socks layer in one cdylib. Ordinary TCP traffic is dispatched via a
-//! local SOCKS5 listener (`MixedListener` on 127.0.0.1:7890) — see
-//! `tun2socks.rs`. The TCP DNS client (`dns_client.rs`) and the China-DNS
-//! split-horizon layer (`china_dns.rs`) dispatch in-process via
-//! `mihomo_tunnel::tcp::handle_tcp` to avoid a startup-time dependency on
-//! the SOCKS listener.
+//! tun2socks layer in one cdylib. Every netstack TCP flow is dispatched
+//! in-process via `mihomo_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
+//! hop. The TCP DNS client (`dns_client.rs`) and the China-DNS split-horizon
+//! layer (`china_dns.rs`) use the same path, so DNS rides the same proxy
+//! selectors as application traffic. Mirrors meow-ios.
 
 mod china_dns;
 mod diagnostics;
@@ -16,7 +15,6 @@ mod dns_client;
 mod dns_table;
 mod doh_cache;
 mod engine;
-mod listener;
 mod logging;
 mod protect;
 mod tun2socks;
@@ -25,7 +23,6 @@ use dashmap::DashMap;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
-use listener::MixedListener;
 use mihomo_api::log_stream::{LogBroadcastLayer, LogMessage};
 use mihomo_api::ApiServer;
 use mihomo_dns::DnsServer;
@@ -102,7 +99,6 @@ fn get_error() -> String {
 // ---------------------------------------------------------------------------
 
 const MINIMAL_CONFIG: &str = "\
-mixed-port: 7890\n\
 mode: rule\n\
 log-level: info\n\
 allow-lan: false\n\
@@ -274,18 +270,10 @@ async fn start_engine_async(
         }));
     }
 
-    // Android-specific: keep the SOCKS5 mixed listener for ordinary
-    // tun2socks TCP traffic. iOS dispatches in-process and skips this.
-    let bind_addr = &config.listeners.bind_address;
-    if let Some(port) = config.listeners.mixed_port {
-        let addr: std::net::SocketAddr = format!("{}:{}", bind_addr, port).parse()?;
-        let listener = MixedListener::new(tunnel.clone(), addr);
-        handles.push(tokio::spawn(async move {
-            if let Err(e) = listener.run().await {
-                tracing::error!("Mixed listener error: {}", e);
-            }
-        }));
-    }
+    // No SOCKS5 / HTTP loopback listener — tun2socks dispatches every flow
+    // through `mihomo_tunnel::tcp::handle_tcp` in-process (same path as
+    // meow-ios). The `listeners.*` block in user configs is intentionally
+    // ignored on Android.
 
     logging::bridge_log(&format!(
         "start_engine_async: all tasks spawned, handles={}",
@@ -361,12 +349,11 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun
     _class: JClass,
     vpn_service: JObject,
     fd: jint,
-    socks_port: jint,
     dns_port: jint,
 ) -> jint {
     logging::bridge_log(&format!(
-        "nativeStartTun2Socks: fd={}, socks={}, dns={}",
-        fd, socks_port, dns_port
+        "nativeStartTun2Socks: fd={}, dns={}",
+        fd, dns_port
     ));
 
     if fd < 0 {
@@ -380,7 +367,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun
     // Register the protect hook in the patched mihomo-proxy
     mihomo_proxy::set_pre_connect_hook(protect::protect_fd);
 
-    match tun2socks::start(fd, socks_port as u16, dns_port as u16) {
+    match tun2socks::start(fd, dns_port as u16) {
         Ok(()) => {
             logging::bridge_log("nativeStartTun2Socks: started successfully");
             0
@@ -461,7 +448,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("mihomo-rust 0.6.0")
+    env.new_string("mihomo-rust 0.6.1")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
 }
