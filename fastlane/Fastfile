@@ -33,7 +33,8 @@ platform :android do
       aab: "mobile/build/outputs/bundle/playRelease/mobile-playRelease.aab",
       skip_upload_metadata: false,
       skip_upload_images: false,
-      skip_upload_screenshots: false
+      skip_upload_screenshots: false,
+      timeout: 3600
     )
   end
 
