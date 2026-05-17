@@ -88,23 +88,24 @@ class VpnService : BaseVpnService(), BaseService.Interface {
             }
         } catch (_: Exception) { emptySet() }
 
-        if (perAppPackages.isEmpty()) {
-            // Feature disabled — exclude self only (default behavior)
-            try { builder.addDisallowedApplication(packageName) }
-            catch (_: PackageManager.NameNotFoundException) { }
-        } else when (DataStore.perAppMode) {
+        // Note: we deliberately do NOT add the meow package to
+        // `addDisallowedApplication` here. The engine and tun2socks run in
+        // the `:vpn` process and rely on `VpnService.protect(fd)` (called
+        // from the patched mihomo-proxy connect hook and the mihomo-dns
+        // SocketFactory) to bypass the TUN on a per-socket basis. Excluding
+        // the whole app's uid would also exempt traffic users may want to
+        // intercept (e.g. a built-in browser preview) and would shadow the
+        // protect path the rest of the stack is designed around.
+        if (perAppPackages.isNotEmpty()) when (DataStore.perAppMode) {
             "proxy" -> {
-                // Only selected apps go through VPN (cannot mix with addDisallowedApplication)
+                // Only selected apps go through VPN.
                 for (pkg in perAppPackages) {
-                    if (pkg == packageName) continue
                     try { builder.addAllowedApplication(pkg) }
                     catch (_: PackageManager.NameNotFoundException) { }
                 }
             }
             else -> {
-                // "bypass" — all apps except selected + self
-                try { builder.addDisallowedApplication(packageName) }
-                catch (_: PackageManager.NameNotFoundException) { }
+                // "bypass" — all apps except selected go through VPN.
                 for (pkg in perAppPackages) {
                     try { builder.addDisallowedApplication(pkg) }
                     catch (_: PackageManager.NameNotFoundException) { }
@@ -117,6 +118,21 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
         val conn = builder.establish() ?: throw NullConnectionException()
         this.conn = conn
+        // Tell the system which networks the VPN sits on top of. Without
+        // this, `VpnService.protect(fd)` knows the bypass mark to apply but
+        // the platform's per-network firewall has no associated network for
+        // the marked traffic, so packets are silently dropped on Xiaomi /
+        // HyperOS builds. Prefer the listener's tracked default network;
+        // fall back to ConnectivityManager.getActiveNetwork() so we still
+        // have an underlying network on the first establish (the listener's
+        // first onAvailable can race the establish call).
+        val underlying = underlyingNetwork ?: run {
+            val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            cm.activeNetwork
+        }
+        underlying?.let { setUnderlyingNetworks(arrayOf(it)) }
+        Timber.d("VpnService: setUnderlyingNetworks=$underlying")
         data.mihomoInstance!!.startTun2Socks(this, conn.fd)
     }
 

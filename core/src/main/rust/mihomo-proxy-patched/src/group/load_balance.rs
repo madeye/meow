@@ -54,7 +54,7 @@ impl LoadBalanceGroup {
                 (hash as usize) % alive.len()
             }
         };
-        Some(alive[idx].clone())
+        Some(Arc::clone(&alive[idx]))
     }
 
     fn select_udp(&self, metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
@@ -76,7 +76,7 @@ impl LoadBalanceGroup {
                 (hash as usize) % alive_udp.len()
             }
         };
-        Some(alive_udp[idx].clone())
+        Some(Arc::clone(&alive_udp[idx]))
     }
 }
 
@@ -345,7 +345,7 @@ mod tests {
         let a = MockProxy::new("A");
         let b = MockProxy::new("B");
         let c = MockProxy::new("C");
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![a, b, c];
         let group = make_rr(proxies);
         let meta = meta_no_src();
 
@@ -362,7 +362,7 @@ mod tests {
         let b = MockProxy::new("B");
         let c = MockProxy::new("C");
         b.mark_dead();
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![a, b, c];
         let group = make_rr(proxies);
         let meta = meta_no_src();
 
@@ -381,7 +381,7 @@ mod tests {
         let c = MockProxy::new("C");
         b.mark_dead();
         c.mark_dead();
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![a, b, c];
         let group = make_rr(proxies);
         let meta = meta_no_src();
         for _ in 0..5 {
@@ -418,7 +418,7 @@ mod tests {
         let a = MockProxy::new("A");
         let b = MockProxy::new("B");
         let c = MockProxy::new("C");
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![a, Arc::clone(&b) as Arc<dyn Proxy>, c];
         let group = make_rr(proxies);
         let meta = meta_no_src();
 
@@ -479,7 +479,7 @@ mod tests {
         let a = MockProxy::new("A");
         let b = MockProxy::new("B");
         let c = MockProxy::new("C");
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![Arc::clone(&a) as Arc<dyn Proxy>, b, c];
         let group = make_ch(proxies);
         let meta = meta_src(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
 
@@ -537,7 +537,7 @@ mod tests {
         let a = MockProxy::new("A");
         let b = MockProxy::new("B");
         let c = MockProxy::new("C");
-        let proxies: Vec<Arc<dyn Proxy>> = vec![a.clone(), b.clone(), c.clone()];
+        let proxies: Vec<Arc<dyn Proxy>> = vec![a, Arc::clone(&b) as Arc<dyn Proxy>, c];
         let group = make_ch(proxies);
         let meta = meta_src(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
 
@@ -612,9 +612,9 @@ mod tests {
         let b = MockProxy::new("B"); // no UDP
         let c = MockProxy::new_udp("C");
         c.mark_dead();
-        let a_count = a.dial_count.clone();
-        let b_count = b.dial_count.clone();
-        let c_count = c.dial_count.clone();
+        let a_count = Arc::clone(&a.dial_count);
+        let b_count = Arc::clone(&b.dial_count);
+        let c_count = Arc::clone(&c.dial_count);
         let proxies: Vec<Arc<dyn Proxy>> = vec![a, b, c];
         let group = make_rr(proxies);
         // dial_udp returns error from MockProxy but that's OK — we care about which was tried

@@ -7,7 +7,7 @@
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::sync::OnceLock;
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, UdpSocket};
 
 /// A callback invoked with the raw fd before connect(). Returns true if protected.
 type ProtectHook = Box<dyn Fn(i32) -> bool + Send + Sync>;
@@ -19,8 +19,15 @@ pub fn set_pre_connect_hook(hook: impl Fn(i32) -> bool + Send + Sync + 'static) 
     PROTECT_HOOK.set(Box::new(hook)).ok();
 }
 
-/// Resolve a hostname using a protected UDP socket (bypasses VPN TUN).
-/// Falls back to tokio::net::lookup_host if no protect hook is set.
+/// Plain-TCP DNS upstream pool. TCP (not UDP) because UDP/53 to off-device
+/// resolvers is filtered on some Chinese mobile/wifi paths, including the
+/// network this app is regularly used on. TCP/53 stays open. Mirrors the
+/// upstream pool pinned in `engine::pinned_dns_block` so split-horizon
+/// answers stay consistent across this resolution path and mihomo's.
+const TCP_DNS_UPSTREAMS: &[&str] = &["119.29.29.29:53", "223.5.5.5:53"];
+
+/// Resolve a hostname over a protected TCP DNS socket (bypasses VPN TUN).
+/// Falls back to `tokio::net::lookup_host` if no protect hook is set.
 async fn protected_resolve(host: &str, port: u16) -> std::io::Result<SocketAddr> {
     let hook = match PROTECT_HOOK.get() {
         Some(h) => h,
@@ -33,39 +40,76 @@ async fn protected_resolve(host: &str, port: u16) -> std::io::Result<SocketAddr>
         }
     };
 
-    // Build a DNS query for the hostname (A record)
     let query = build_dns_query(host);
+    // RFC 1035 §4.2.2 — TCP DNS prepends a 16-bit length to the message.
+    let mut tcp_msg = Vec::with_capacity(2 + query.len());
+    tcp_msg.extend_from_slice(&(query.len() as u16).to_be_bytes());
+    tcp_msg.extend_from_slice(&query);
 
-    // Send via a protected UDP socket to 8.8.8.8:53
-    let sock = socket2::Socket::new(
-        socket2::Domain::IPV4,
-        socket2::Type::DGRAM,
-        Some(socket2::Protocol::UDP),
-    )?;
-    (hook)(sock.as_raw_fd());
+    let mut last_err = std::io::Error::new(
+        std::io::ErrorKind::AddrNotAvailable,
+        format!("no DNS upstream reachable for {host}"),
+    );
+    for upstream in TCP_DNS_UPSTREAMS {
+        let Ok(dns_addr) = upstream.parse::<SocketAddr>() else {
+            continue;
+        };
+        match tcp_dns_query(hook, dns_addr, &tcp_msg, host, port).await {
+            Ok(sa) => return Ok(sa),
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
+}
+
+/// Single-shot TCP DNS query against `dns_addr`. Opens a fresh fd-protected
+/// socket, connects, sends the length-prefixed query, parses the first A
+/// record from the reply.
+async fn tcp_dns_query(
+    hook: &ProtectHook,
+    dns_addr: SocketAddr,
+    tcp_msg: &[u8],
+    host: &str,
+    port: u16,
+) -> std::io::Result<SocketAddr> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let domain = match dns_addr {
+        SocketAddr::V4(_) => socket2::Domain::IPV4,
+        SocketAddr::V6(_) => socket2::Domain::IPV6,
+    };
+    let sock = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
     sock.set_nonblocking(true)?;
+    (hook)(sock.as_raw_fd());
+    match sock.connect(&socket2::SockAddr::from(dns_addr)) {
+        Ok(()) => {}
+        Err(e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
+        Err(e) => return Err(e),
+    }
+    let std_stream: std::net::TcpStream = sock.into();
+    let mut stream = TcpStream::from_std(std_stream)?;
 
-    // Connect via socket2 before converting to tokio — ensures the protected
-    // socket routes through the underlying network, not the VPN TUN.
-    let dns_addr: std::net::SocketAddr = "8.8.8.8:53".parse().unwrap();
-    sock.connect(&socket2::SockAddr::from(dns_addr))?;
-
-    let std_sock: std::net::UdpSocket = sock.into();
-    let udp = tokio::net::UdpSocket::from_std(std_sock)?;
-    udp.send(&query).await?;
-
-    let mut buf = [0u8; 512];
-    let recv_result = tokio::time::timeout(std::time::Duration::from_secs(5), udp.recv(&mut buf))
-        .await
-        .map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("DNS timeout for {}", host),
-            )
-        })?;
-    let n = recv_result?;
-
-    parse_dns_response(&buf[..n], port)
+    let deadline = std::time::Duration::from_secs(5);
+    tokio::time::timeout(deadline, async {
+        stream.writable().await?;
+        if let Some(err) = stream.take_error()? {
+            return Err(err);
+        }
+        stream.write_all(tcp_msg).await?;
+        let mut len_buf = [0u8; 2];
+        stream.read_exact(&mut len_buf).await?;
+        let resp_len = u16::from_be_bytes(len_buf) as usize;
+        let mut resp = vec![0u8; resp_len];
+        stream.read_exact(&mut resp).await?;
+        parse_dns_response(&resp, port)
+    })
+    .await
+    .map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("DNS timeout for {host}"),
+        )
+    })?
 }
 
 /// Build a minimal DNS A query for the given hostname.
@@ -158,6 +202,29 @@ fn parse_dns_response(data: &[u8], port: u16) -> std::io::Result<SocketAddr> {
     ))
 }
 
+/// Bind a UDP socket, calling the protect hook before bind() if set so the
+/// socket bypasses the VPN TUN. Falls back to plain `tokio::UdpSocket::bind`
+/// when no hook is registered (non-Android platforms).
+pub async fn protected_udp_bind(local: SocketAddr) -> std::io::Result<UdpSocket> {
+    let hook = match PROTECT_HOOK.get() {
+        Some(h) => h,
+        None => return UdpSocket::bind(local).await,
+    };
+
+    let domain = match local {
+        SocketAddr::V4(_) => socket2::Domain::IPV4,
+        SocketAddr::V6(_) => socket2::Domain::IPV6,
+    };
+    let sock = socket2::Socket::new(domain, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+    // Protect BEFORE bind — fwmark must be on the socket when the kernel
+    // resolves the route, which happens at bind / first send.
+    (hook)(sock.as_raw_fd());
+    sock.set_nonblocking(true)?;
+    sock.bind(&socket2::SockAddr::from(local))?;
+    let std_sock: std::net::UdpSocket = sock.into();
+    UdpSocket::from_std(std_sock)
+}
+
 /// Connect a TCP stream, calling the protect hook before connect() if set.
 pub async fn protected_tcp_connect(addr: &str) -> std::io::Result<TcpStream> {
     // If no hook is set, just use regular connect
@@ -203,8 +270,15 @@ pub async fn protected_tcp_connect(addr: &str) -> std::io::Result<TcpStream> {
     let std_stream: std::net::TcpStream = socket.into();
     let stream = TcpStream::from_std(std_stream)?;
 
-    // Wait for connect to complete
-    stream.writable().await?;
+    // Bounded wait for connect to complete — wrapping in `tokio::time::timeout`
+    // also registers the socket with the current reactor early, which is
+    // required for `writable()` to receive readiness notifications when the
+    // socket was created via `socket2` rather than tokio's own dialer. Without
+    // this wrapper, the connect future can register on the wrong reactor or
+    // never get notified, and the dispatch task hangs indefinitely.
+    tokio::time::timeout(std::time::Duration::from_secs(15), stream.writable())
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "connect timeout"))??;
     if let Some(err) = stream.take_error()? {
         return Err(err);
     }

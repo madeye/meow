@@ -73,7 +73,7 @@ impl DirectAdapter {
                 .await
                 .map_err(MihomoError::Io)?
                 .next()
-                .ok_or_else(|| MihomoError::Dns(format!("direct: no address for {}", addr)));
+                .ok_or_else(|| MihomoError::Dns(format!("direct: no address for {addr}")));
         }
 
         Err(MihomoError::Proxy(
@@ -217,7 +217,11 @@ impl ProxyAdapter for DirectAdapter {
     }
 
     async fn dial_udp(&self, _metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
-        let socket = UdpSocket::bind("0.0.0.0:0")
+        // Android: protect the fd before bind so the socket bypasses the VPN
+        // TUN. On other platforms the hook is None and protected_udp_bind
+        // falls back to plain tokio::UdpSocket::bind.
+        let local: SocketAddr = "0.0.0.0:0".parse().expect("static");
+        let socket = crate::connect::protected_udp_bind(local)
             .await
             .map_err(MihomoError::Io)?;
         Ok(Box::new(DirectPacketConn(socket)))

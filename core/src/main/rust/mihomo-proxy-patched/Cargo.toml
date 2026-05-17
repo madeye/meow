@@ -12,9 +12,9 @@ vless = []
 vless-vision = ["vless"]
 
 [dependencies]
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-transport = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-transport = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
 tokio = { version = "1", features = ["full"] }
 shadowsocks = { version = "1.21", features = ["aead-cipher-2022", "stream-cipher"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }

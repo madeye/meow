@@ -19,5 +19,4 @@ object MihomoCore {
     external fun nativeVersion(): String
     external fun nativeTestDirectTcp(host: String, port: Int): String
     external fun nativeTestDnsResolver(dnsAddr: String): String
-    external fun nativeSetDnsUpstreams(csv: String): Int
 }

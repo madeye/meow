@@ -27,6 +27,7 @@ use mihomo_common::{
     AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
     Result,
 };
+use std::fmt::Write as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(test)]
 use tokio::net::TcpStream;
@@ -70,7 +71,7 @@ impl HttpAdapter {
     ) -> Self {
         Self {
             name: name.to_string(),
-            addr_str: format!("{}:{}", server, port),
+            addr_str: format!("{server}:{port}"),
             server: server.to_string(),
             port,
             auth,
@@ -121,11 +122,11 @@ impl HttpAdapter {
 
         if let Some((user, pass)) = &self.auth {
             let creds = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
-            req.push_str(&format!("Proxy-Authorization: Basic {creds}\r\n"));
+            let _ = write!(req, "Proxy-Authorization: Basic {creds}\r\n");
         }
 
         for (k, v) in &self.extra_headers {
-            req.push_str(&format!("{k}: {v}\r\n"));
+            let _ = write!(req, "{k}: {v}\r\n");
         }
         req.push_str("\r\n");
 
@@ -345,7 +346,7 @@ mod tests {
 
     fn make_metadata(host: &str, port: u16) -> Metadata {
         Metadata {
-            host: host.to_string(),
+            host: host.into(),
             dst_port: port,
             ..Default::default()
         }
@@ -535,7 +536,7 @@ mod tests {
             // 200 status + 101 headers (exceeds the 100-header cap) + blank line.
             let mut resp = String::from("HTTP/1.1 200 Connection established\r\n");
             for i in 0..101usize {
-                resp.push_str(&format!("X-Flood-{i}: value\r\n"));
+                let _ = write!(resp, "X-Flood-{i}: value\r\n");
             }
             resp.push_str("\r\n");
             let _ = stream.write_all(resp.as_bytes()).await;

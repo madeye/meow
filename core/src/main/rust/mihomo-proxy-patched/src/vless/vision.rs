@@ -384,9 +384,7 @@ mod tests {
             let n = payload_len - 1;
             assert!(
                 PADDING_RANGE.contains(&n),
-                "random byte count {} not in PADDING_RANGE {:?}",
-                n,
-                PADDING_RANGE
+                "random byte count {n} not in PADDING_RANGE {PADDING_RANGE:?}"
             );
         }
     }
@@ -413,7 +411,7 @@ mod tests {
     #[tokio::test]
     async fn vision_detects_inner_tls_by_first_5_bytes() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         // Write exactly 5 bytes: TLS handshake record type + TLS 1.2 version.
         // ClientHello body_len = 0x0001 (1 byte body).
@@ -455,7 +453,7 @@ mod tests {
     #[tokio::test]
     async fn vision_passthrough_on_non_tls_first_byte() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         // 0x47 = 'G' — first byte of "GET /"
         let data = [0x47u8, 0x45, 0x54, 0x20, 0x2F];
@@ -473,8 +471,7 @@ mod tests {
         // The 5 data bytes must appear verbatim (no extra prefix).
         assert!(
             combined.windows(5).any(|w| w == data),
-            "passthrough must forward the 5 original bytes; got {:?}",
-            combined
+            "passthrough must forward the 5 original bytes; got {combined:?}"
         );
         assert!(
             !conn.vision_entered,
@@ -489,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn vision_passthrough_on_tls_type_but_wrong_version() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         let data = [0x16u8, 0x04, 0x00, 0x00, 0x00]; // TLS type, version major 0x04
         conn.write_all(&data).await.unwrap();
@@ -505,7 +502,7 @@ mod tests {
     #[tokio::test]
     async fn vision_passthrough_on_empty_stream() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         // Write only 3 bytes and then nothing more.
         conn.write_all(&[0x16, 0x03, 0x01]).await.unwrap();
@@ -527,7 +524,7 @@ mod tests {
     #[tokio::test]
     async fn vision_reads_full_clienthello_before_sending() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         // ClientHello: 5-byte header claiming body_length=4.
         let hdr = [0x16u8, 0x03, 0x01, 0x00, 0x04];
@@ -539,8 +536,7 @@ mod tests {
             let combined: Vec<u8> = w.iter().flat_map(|v| v.iter().copied()).collect();
             assert!(
                 combined.is_empty(),
-                "must NOT write to inner after only the 5-byte header; got {:?}",
-                combined
+                "must NOT write to inner after only the 5-byte header; got {combined:?}"
             );
         }
 
@@ -551,8 +547,7 @@ mod tests {
             let combined: Vec<u8> = w.iter().flat_map(|v| v.iter().copied()).collect();
             assert!(
                 combined.is_empty(),
-                "must NOT write to inner after partial body (2/4 bytes); got {:?}",
-                combined
+                "must NOT write to inner after partial body (2/4 bytes); got {combined:?}"
             );
         }
 
@@ -560,9 +555,8 @@ mod tests {
         conn.write_all(&[0xCC, 0xDD]).await.unwrap();
         {
             let w = written.lock().unwrap();
-            let combined: Vec<u8> = w.iter().flat_map(|v| v.iter().copied()).collect();
             assert!(
-                !combined.is_empty(),
+                w.iter().any(|v| !v.is_empty()),
                 "must write to inner once full ClientHello is assembled"
             );
         }
@@ -575,7 +569,7 @@ mod tests {
     #[tokio::test]
     async fn vision_clienthello_body_length_from_bytes_3_4() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         // body_length = 512 = 0x0200
         let hdr = [0x16u8, 0x03, 0x01, 0x02, 0x00];
@@ -590,7 +584,7 @@ mod tests {
         // Supply 511 bytes (not enough).
         conn.write_all(&vec![0u8; 511]).await.unwrap();
         assert!(
-            written.lock().unwrap().iter().all(|v| v.is_empty())
+            written.lock().unwrap().iter().all(std::vec::Vec::is_empty)
                 || written.lock().unwrap().is_empty(),
             "partial body must not trigger send"
         );
@@ -609,8 +603,10 @@ mod tests {
         // Supply the last byte.
         conn.write_all(&[0xFE]).await.unwrap();
         let w = written.lock().unwrap();
-        let combined: Vec<u8> = w.iter().flat_map(|v| v.iter().copied()).collect();
-        assert!(!combined.is_empty(), "must write after all 512 body bytes");
+        assert!(
+            w.iter().any(|v| !v.is_empty()),
+            "must write after all 512 body bytes"
+        );
     }
 
     // ─── C9: padding header precedes ClientHello in output ───────────────────
@@ -618,7 +614,7 @@ mod tests {
     #[tokio::test]
     async fn vision_sends_padding_then_clienthello_in_order() {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut conn = vision_over_recorder(written.clone());
+        let mut conn = vision_over_recorder(Arc::clone(&written));
 
         let hdr = [0x16u8, 0x03, 0x01, 0x00, 0x02]; // body_len = 2
         conn.write_all(&hdr).await.unwrap();
@@ -689,7 +685,7 @@ mod tests {
             }
         }
 
-        let cap = CapWriter(lines.clone(), line_buf);
+        let cap = CapWriter(Arc::clone(&lines), line_buf);
         let sub = tracing_subscriber::fmt()
             .with_writer(cap)
             .with_ansi(false)
@@ -712,12 +708,11 @@ mod tests {
         let bad_lines: Vec<&str> = captured
             .iter()
             .filter(|l| l.contains("WARN") || l.contains("ERROR"))
-            .map(|s| s.as_str())
+            .map(std::string::String::as_str)
             .collect();
         assert!(
             bad_lines.is_empty(),
-            "passthrough must not emit WARN/ERROR logs; got: {:?}",
-            bad_lines
+            "passthrough must not emit WARN/ERROR logs; got: {bad_lines:?}"
         );
     }
 }

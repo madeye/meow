@@ -26,7 +26,4 @@ object DataStore {
         get() = prefs.getString("perAppPackages", "[]") ?: "[]"
         set(value) = prefs.edit().putString("perAppPackages", value).apply()
 
-    var dohServer: String
-        get() = prefs.getString("dohServer", "") ?: ""
-        set(value) = prefs.edit().putString("dohServer", value).apply()
 }

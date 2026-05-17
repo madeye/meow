@@ -1,19 +1,19 @@
 //! Rust half of the meow-android native stack — JNI surface for the Kotlin
 //! VPN service.
 //!
-//! Embeds the mihomo-rust v0.6.1 proxy engine (with a local fork of
+//! Embeds the mihomo-rust v0.7.3 proxy engine (with a local fork of
 //! `mihomo-proxy` carrying the `set_pre_connect_hook` patch) and the
 //! tun2socks layer in one cdylib. Every netstack TCP flow is dispatched
 //! in-process via `mihomo_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
-//! hop. The TCP DNS client (`dns_client.rs`) and the China-DNS split-horizon
-//! layer (`china_dns.rs`) use the same path, so DNS rides the same proxy
-//! selectors as application traffic. Mirrors meow-ios.
+//! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
+//! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
+//! `engine::strip_and_inject`; the tun2socks UDP/53 intercept hands every
+//! in-TUN DNS datagram straight to `mihomo_dns::DnsServer::handle_query`
+//! (A/AAAA) or forwards verbatim to the pinned upstreams (anything else).
+//! Mirrors meow-ios.
 
-mod china_dns;
 mod diagnostics;
-mod dns_client;
-mod dns_table;
-mod doh_cache;
+mod dns_factory;
 mod engine;
 mod logging;
 mod protect;
@@ -102,8 +102,6 @@ const MINIMAL_CONFIG: &str = "\
 mode: rule\n\
 log-level: info\n\
 allow-lan: false\n\
-dns:\n\
-  enable: false\n\
 proxies: []\n\
 proxy-groups: []\n\
 rules:\n\
@@ -172,12 +170,15 @@ async fn start_engine_async(
     logging::bridge_log("start_engine_async: initializing rustls");
     let _ = rustls::crypto::ring::default_provider().install_default();
     install_tracing_subscriber();
+    // Install our `protect()`-aware socket factory so mihomo-dns's internal
+    // UDP/TCP nameserver queries bypass the VPN TUN. Idempotent across
+    // engine restarts.
+    dns_factory::install();
 
-    let config_str = if let Some(dir) = HOME_DIR.lock().as_ref() {
-        // Set XDG_CONFIG_HOME so mihomo-config finds GeoIP databases.
-        // mihomo-config looks for $XDG_CONFIG_HOME/mihomo/Country.mmdb.
-        // Our dir is .../no_backup/mihomo, so set XDG_CONFIG_HOME to its
-        // parent (.../no_backup).
+    // Resolve config path + set XDG_CONFIG_HOME (mihomo-config looks for
+    // $XDG_CONFIG_HOME/mihomo/Country.mmdb). Our dir is .../no_backup/mihomo,
+    // so XDG_CONFIG_HOME is the parent.
+    let config_path = if let Some(dir) = HOME_DIR.lock().as_ref() {
         if let Some(parent) = std::path::Path::new(dir).parent() {
             std::env::set_var("XDG_CONFIG_HOME", parent);
             logging::bridge_log(&format!(
@@ -185,23 +186,26 @@ async fn start_engine_async(
                 parent.display()
             ));
         }
-        let path = format!("{}/config.yaml", dir);
-        logging::bridge_log(&format!("start_engine_async: loading config from {}", path));
-        match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                logging::bridge_log(&format!(
-                    "start_engine_async: failed to read {}: {}, using minimal",
-                    path, e
-                ));
-                MINIMAL_CONFIG.to_string()
-            }
-        }
+        Some(format!("{}/config.yaml", dir))
     } else {
-        logging::bridge_log("start_engine_async: no home dir, using minimal config");
-        MINIMAL_CONFIG.to_string()
+        None
     };
-    let mut config = mihomo_config::load_config_from_str(&config_str).await?;
+
+    // Load via engine::load_stripped_config (mirrors meow-ios): strips
+    // listener/sniffer/dns blocks and injects the pinned fake-IP DNS block.
+    // Falls back to the minimal config (also passed through strip_and_inject)
+    // when no home dir is set or the file is unreadable.
+    let mut config = match config_path.as_deref() {
+        Some(path) if std::path::Path::new(path).exists() => {
+            logging::bridge_log(&format!("start_engine_async: loading config from {}", path));
+            engine::load_stripped_config(path).await?
+        }
+        _ => {
+            logging::bridge_log("start_engine_async: using minimal config");
+            let stripped = engine::strip_and_inject(MINIMAL_CONFIG)?;
+            mihomo_config::load_config_from_str(&stripped).await?
+        }
+    };
     logging::bridge_log(&format!(
         "start_engine_async: config loaded, proxies={}, rules={}",
         config.proxies.len(),
@@ -236,11 +240,11 @@ async fn start_engine_async(
     let listeners_for_api = config.listeners.named.clone();
     let log_tx = log_broadcast_tx().clone();
 
-    // DNS server task (v0.6.0 split: the resolver's UDP/53 listener moved
-    // into a separate `DnsServer::new(resolver, addr).run()`). This is
-    // optional — Android's tun2socks intercepts UDP/53 and dispatches to
-    // china_dns/DoH, so the engine's listener typically is not configured.
-    // If the user explicitly sets `dns.listen` in config.yaml, we honour it.
+    // Spawn mihomo's DnsServer on the loopback address pinned by
+    // `engine::pinned_dns_block` (127.0.0.1:1053). tun2socks dispatches
+    // every in-TUN UDP/53 datagram through `mihomo_tunnel::udp::handle_udp`
+    // with its destination rewritten to this address — DNS rides the same
+    // in-process tunnel path as application UDP traffic.
     if let Some(addr) = config.dns.listen_addr {
         let resolver = config.dns.resolver.clone();
         handles.push(tokio::spawn(async move {
@@ -448,27 +452,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("mihomo-rust 0.6.1")
+    env.new_string("mihomo-rust 0.7.3")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
-}
-
-/// Configure the trusted plain-TCP DNS upstream pool from the Kotlin Settings
-/// view. `csv` is a comma-/whitespace-separated list of `host` or
-/// `host:port` entries (port defaults to 53); empty / parse-failed input
-/// falls back to the built-in defaults (1.1.1.1 / 8.8.8.8).
-///
-/// Call this before `nativeStartTun2Socks` — the upstream list is read once
-/// inside `init_dns_client`. Writes are still safe at runtime; they take
-/// effect on the next tunnel start.
-#[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetDnsUpstreams(
-    mut env: JNIEnv,
-    _class: JClass,
-    csv: JString,
-) -> jint {
-    let input: String = env.get_string(&csv).map(|s| s.into()).unwrap_or_default();
-    let parsed = dns_client::parse_upstreams_csv(&input);
-    dns_client::set_user_upstreams(parsed);
-    0
 }

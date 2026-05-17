@@ -65,7 +65,7 @@ impl SelectorGroup {
         let sel = self.selected.read();
         if let Some(name) = sel.as_deref() {
             if let Some(p) = all.iter().find(|p| p.name() == name) {
-                return Some(p.clone());
+                return Some(Arc::clone(p));
             }
         }
         // Fall back to first proxy in the list
@@ -135,13 +135,12 @@ impl Proxy for SelectorGroup {
     }
 
     fn last_delay(&self) -> u16 {
-        self.selected_proxy().map(|p| p.last_delay()).unwrap_or(0)
+        self.selected_proxy().map_or(0, |p| p.last_delay())
     }
 
     fn last_delay_for_url(&self, url: &str) -> u16 {
         self.selected_proxy()
-            .map(|p| p.last_delay_for_url(url))
-            .unwrap_or(0)
+            .map_or(0, |p| p.last_delay_for_url(url))
     }
 
     fn delay_history(&self) -> Vec<DelayHistory> {

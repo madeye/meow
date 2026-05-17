@@ -80,7 +80,7 @@ impl Socks5Adapter {
     ) -> Self {
         Self {
             name: name.to_string(),
-            addr_str: format!("{}:{}", server, port),
+            addr_str: format!("{server}:{port}"),
             server: server.to_string(),
             port,
             auth,
@@ -229,13 +229,7 @@ impl Socks5Adapter {
         // upstream: socks5.go — uses hostname when available, NOT IP-only dial.
         let mut req = vec![VERSION, CMD_CONNECT, RESERVED];
 
-        if !target_host.is_empty() {
-            // atyp 0x03: domain name
-            let host_bytes = target_host.as_bytes();
-            req.push(ATYP_DOMAIN);
-            req.push(host_bytes.len() as u8);
-            req.extend_from_slice(host_bytes);
-        } else {
+        if target_host.is_empty() {
             match target_ip {
                 Some(IpAddr::V4(v4)) => {
                     req.push(ATYP_IPV4);
@@ -251,6 +245,12 @@ impl Socks5Adapter {
                     ));
                 }
             }
+        } else {
+            // atyp 0x03: domain name
+            let host_bytes = target_host.as_bytes();
+            req.push(ATYP_DOMAIN);
+            req.push(host_bytes.len() as u8);
+            req.extend_from_slice(host_bytes);
         }
 
         req.push((target_port >> 8) as u8);
@@ -463,9 +463,8 @@ mod tests {
                 captured_req.extend_from_slice(&methods);
 
                 let chosen = match &self.auth_mode {
-                    AuthMode::NoAuth => METHOD_NO_AUTH,
+                    AuthMode::NoAuth | AuthMode::ForceNoAuth => METHOD_NO_AUTH,
                     AuthMode::UserPass { .. } => METHOD_USER_PASS,
-                    AuthMode::ForceNoAuth => METHOD_NO_AUTH,
                     AuthMode::NoAcceptable => METHOD_NO_ACCEPTABLE,
                 };
                 s.write_all(&[VERSION, chosen]).await.unwrap();
@@ -556,7 +555,7 @@ mod tests {
 
     fn meta_with_host(host: &str, port: u16) -> Metadata {
         Metadata {
-            host: host.to_string(),
+            host: host.into(),
             dst_port: port,
             ..Default::default()
         }
@@ -564,7 +563,6 @@ mod tests {
 
     fn meta_with_ipv4(ip: Ipv4Addr, port: u16) -> Metadata {
         Metadata {
-            host: String::new(),
             dst_ip: Some(IpAddr::V4(ip)),
             dst_port: port,
             ..Default::default()
@@ -688,7 +686,7 @@ mod tests {
 
         // Metadata has BOTH host and dst_ip.
         let meta = Metadata {
-            host: "example.com".to_string(),
+            host: "example.com".into(),
             dst_ip: Some(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))),
             dst_port: 80,
             ..Default::default()

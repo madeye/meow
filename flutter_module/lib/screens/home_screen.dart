@@ -6,6 +6,8 @@ import '../services/vpn_channel.dart';
 import '../models/vpn_state.dart';
 import '../models/traffic_stats.dart';
 import '../models/profile.dart';
+import '../models/proxy_group.dart';
+import '../services/mihomo_api.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -55,12 +57,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final state = await _vpn.getState();
       final profile = await _vpn.getSelectedProfile();
+      // Source of truth for the node list:
+      //   1) When the engine is running, the live `/proxies` endpoint —
+      //      this includes nodes pulled in via `proxy-providers:` URLs that
+      //      aren't present in the raw subscription YAML.
+      //   2) Otherwise, parse the subscription YAML with the real YAML
+      //      parser (`ProxiesResult.fromYaml`); the regex-based
+      //      `Profile.proxyNames` only handled inline `proxies:` with a
+      //      narrow indent shape and missed many real-world subscriptions.
+      List<String> names = const [];
+      if (state == VpnState.connected) {
+        try {
+          final result = await MihomoApi.instance.getProxies();
+          names = result.proxies.keys
+              .where((n) => n != 'DIRECT' && n != 'REJECT' && n != 'COMPATIBLE')
+              .toList();
+        } catch (_) {
+          // Fall through to YAML if the engine API is unreachable.
+        }
+      }
+      if (names.isEmpty && profile != null) {
+        final fromYaml = ProxiesResult.fromYaml(profile.yamlContent);
+        names = fromYaml.proxies.keys
+            .where((n) => n != 'DIRECT' && n != 'REJECT' && n != 'COMPATIBLE')
+            .toList();
+      }
       if (mounted) {
         setState(() {
           _state = state;
           final changed = _profile?.id != profile?.id;
           _profile = profile;
-          _proxyNames = profile?.proxyNames ?? [];
+          _proxyNames = names;
           if (changed || _selectedProxy == null || !_proxyNames.contains(_selectedProxy)) {
             final saved = profile?.selectedProxy ?? '';
             if (saved.isNotEmpty && _proxyNames.contains(saved)) {

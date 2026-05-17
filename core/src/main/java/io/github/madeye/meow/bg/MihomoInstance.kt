@@ -3,7 +3,6 @@ package io.github.madeye.meow.bg
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.core.MihomoCore
 import io.github.madeye.meow.database.ClashProfile
-import io.github.madeye.meow.preference.DataStore
 import timber.log.Timber
 import java.io.File
 
@@ -20,16 +19,12 @@ class MihomoInstance(val profile: ClashProfile) {
         copyGeoxAssets(vpnService, configDir)
 
         val configFile = File(configDir, "config.yaml")
-        // Strip sections handled by the app, not mihomo:
-        // - subscriptions: refresh is done by the app
-        // - dns: DNS is handled by tun2socks DoH forwarder
+        // Only strip the app-managed `subscriptions:` block. Listener ports,
+        // `sniffer:`, and the user `dns:` block are stripped (and the pinned
+        // fake-IP DNS block injected) on the Rust side by
+        // `engine::strip_and_inject` — see meow-ios for the same pattern.
         val yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
-            .replace(Regex("(?m)^dns:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), buildDnsSection())
-            .replace(Regex("(?m)^port:.*\n?"), "")
-            .replace(Regex("(?m)^socks-port:.*\n?"), "")
-            .replace(Regex("(?m)^mixed-port:.*\n?"), "")
-            .let { "mixed-port: 7890\n$it" }
             .let { injectGeoxUrl(it) }
         configFile.writeText(yaml)
         MihomoCore.nativeSetHomeDir(configDir.absolutePath)
@@ -61,15 +56,6 @@ class MihomoInstance(val profile: ClashProfile) {
             } catch (e: Exception) {
                 Timber.w(e, "MihomoInstance: failed to seed $targetName from assets")
             }
-        }
-    }
-
-    private fun buildDnsSection(): String {
-        val doh = DataStore.dohServer
-        return if (doh.isNotBlank()) {
-            "dns:\n  enable: false\n  nameserver:\n    - $doh\n"
-        } else {
-            "dns:\n  enable: false\n"
         }
     }
 

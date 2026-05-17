@@ -18,19 +18,18 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-# Embedded mihomo-rust engine. Pinned to v0.6.1 (matches meow-ios).
-mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.6.1" }
+# Embedded mihomo-rust engine. Pinned to v0.7.4 (matches meow-ios).
+mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
 # Local fork of mihomo-proxy with the Android `set_pre_connect_hook` patch.
 mihomo-proxy = { path = "../mihomo-proxy-patched" }
 
-# Explicit pins (transitive through mihomo-tunnel; surfaced here because
+# Explicit pin (transitive through mihomo-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
-# and china_dns / tun2socks NAT-key construction needs the same concrete types
-# mihomo-tunnel uses internally).
+# with the same concrete types mihomo-tunnel uses internally).
 dashmap = "6"
 
 # Async runtime
@@ -39,7 +38,7 @@ parking_lot = "0.12"
 futures = "0.3"
 
 # Logging
-tracing = "0.1"
+tracing = { version = "0.1", features = ["log-always"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 log = "0.4"
 android_logger = "0.14"

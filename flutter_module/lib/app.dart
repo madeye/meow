@@ -24,11 +24,19 @@ class MihomoApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
+      theme: ThemeData(useMaterial3: true).copyWith(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+          seedColor: const Color(0xFFE8843A),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFFFF1E0),
+      ),
+      darkTheme: ThemeData.dark(useMaterial3: true).copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFFFA458),
           brightness: Brightness.dark,
         ),
+        scaffoldBackgroundColor: const Color(0xFF1A140E),
       ),
       home: const MainScreen(),
     );

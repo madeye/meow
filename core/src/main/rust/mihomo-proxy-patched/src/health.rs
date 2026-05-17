@@ -33,9 +33,8 @@ pub async fn url_test(
     expected: Option<&str>,
     timeout: Duration,
 ) -> Result<u16, UrlTestError> {
-    let parsed = match ParsedUrl::parse(url) {
-        Some(p) => p,
-        None => return Err(UrlTestError::Transport(format!("invalid url: {url}"))),
+    let Some(parsed) = ParsedUrl::parse(url) else {
+        return Err(UrlTestError::Transport(format!("invalid url: {url}")));
     };
     let ranges = match parse_expected(expected) {
         Ok(r) => r,
@@ -45,7 +44,7 @@ pub async fn url_test(
     let start = Instant::now();
     let metadata = mihomo_common::Metadata {
         network: mihomo_common::Network::Tcp,
-        host: parsed.host.clone(),
+        host: parsed.host.as_str().into(),
         dst_port: parsed.port,
         ..Default::default()
     };

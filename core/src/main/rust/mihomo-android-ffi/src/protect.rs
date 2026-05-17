@@ -56,7 +56,7 @@ pub fn protect_fd(fd: i32) -> bool {
     match env.call_method(service, "protect", "(I)Z", &[jni::objects::JValue::Int(fd)]) {
         Ok(val) => val.z().unwrap_or(false),
         Err(e) => {
-            crate::logging::bridge_log(&format!("protect: JNI call failed: {}", e));
+            crate::logging::bridge_log(&format!("protect: JNI call failed for fd={}: {}", fd, e));
             false
         }
     }

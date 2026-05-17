@@ -69,7 +69,7 @@ impl VlessAddr {
 pub(crate) fn addr_from_metadata(m: &Metadata) -> VlessAddr {
     if !m.host.is_empty() {
         // Metadata hosts are already validated (or we fail at encode time at worst).
-        VlessAddr::Domain(m.host.clone())
+        VlessAddr::Domain(m.host.to_string())
     } else if let Some(ip) = m.dst_ip {
         match ip {
             std::net::IpAddr::V4(v4) => VlessAddr::Ipv4(v4.octets()),
@@ -183,8 +183,7 @@ where
              check UUID and whether a TLS layer is required"
         );
         return Err(MihomoError::Proxy(format!(
-            "vless: version mismatch: expected 0x00, got {:#04x}",
-            version
+            "vless: version mismatch: expected 0x00, got {version:#04x}"
         )));
     }
 
@@ -534,7 +533,7 @@ mod tests {
             }
         }
 
-        let cap = CapWriter(captured.clone(), line_buf);
+        let cap = CapWriter(Arc::clone(&captured), line_buf);
         let sub = tracing_subscriber::fmt()
             .with_writer(cap)
             .with_ansi(false)
@@ -558,8 +557,7 @@ mod tests {
         let err_str = result.unwrap_err().to_string();
         assert!(
             err_str.contains("version") || err_str.contains("mismatch"),
-            "error must mention version mismatch, got: {}",
-            err_str
+            "error must mention version mismatch, got: {err_str}"
         );
 
         let logs = captured.lock().unwrap();
