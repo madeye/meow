@@ -1,10 +1,10 @@
-//! [`StreamConn`] — a thin newtype that adapts `Box<dyn mihomo_transport::Stream>`
+//! [`StreamConn`] — a thin newtype that adapts `Box<dyn meow_transport::Stream>`
 //! to the `ProxyConn` trait.
 //!
 //! `ProxyConn` requires `AsyncRead + AsyncWrite + Unpin + Send + Sync`.
-//! `mihomo_transport::Stream` satisfies all of those, but an explicit `ProxyConn`
-//! impl cannot be written in `mihomo-transport` (it doesn't know about
-//! `ProxyConn`) nor in `mihomo-common` (it doesn't know about `Stream`).
+//! `meow_transport::Stream` satisfies all of those, but an explicit `ProxyConn`
+//! impl cannot be written in `meow-transport` (it doesn't know about
+//! `ProxyConn`) nor in `meow-common` (it doesn't know about `Stream`).
 //! The impl lives here — in the crate that sees both types — via this newtype.
 //!
 //! All transport-upgraded streams (`TlsLayer`, `WsLayer`, etc.) are boxed as
@@ -15,8 +15,8 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use mihomo_common::ProxyConn;
-use mihomo_transport::Stream;
+use meow_common::ProxyConn;
+use meow_transport::Stream;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// Wraps a transport-layer stream as a `ProxyConn`.

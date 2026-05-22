@@ -1,10 +1,10 @@
-use mihomo_common::ProxyAdapter;
+use meow_common::ProxyAdapter;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, trace, warn};
 
-pub use mihomo_common::ProxyHealth;
+pub use meow_common::ProxyHealth;
 
 /// Outcome of a single [`url_test`] probe. Callers distinguish transport
 /// failure from deadline expiry to pick the right HTTP status code
@@ -42,8 +42,8 @@ pub async fn url_test(
     };
 
     let start = Instant::now();
-    let metadata = mihomo_common::Metadata {
-        network: mihomo_common::Network::Tcp,
+    let metadata = meow_common::Metadata {
+        network: meow_common::Network::Tcp,
         host: parsed.host.as_str().into(),
         dst_port: parsed.port,
         ..Default::default()
@@ -72,7 +72,7 @@ pub async fn url_test(
 
 async fn probe_once(
     adapter: &dyn ProxyAdapter,
-    metadata: mihomo_common::Metadata,
+    metadata: meow_common::Metadata,
     parsed: ParsedUrl,
     ranges: Vec<(u16, u16)>,
 ) -> Result<(), String> {
@@ -174,13 +174,28 @@ where
 }
 
 fn tls_connector() -> tokio_rustls::TlsConnector {
-    let root_store = rustls::RootCertStore {
-        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-    };
-    let config = rustls::ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-    tokio_rustls::TlsConnector::from(Arc::new(config))
+    // Lazy singleton: one TlsConnector + ClientConfig + root-store clone for
+    // the whole process. URLTest probe cycles previously rebuilt this on every
+    // HTTPS probe, cloning webpki_roots::TLS_SERVER_ROOTS per call.
+    static CONNECTOR: std::sync::OnceLock<tokio_rustls::TlsConnector> = std::sync::OnceLock::new();
+    CONNECTOR
+        .get_or_init(|| {
+            let root_store = rustls::RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+            };
+            // Be explicit about the provider: when `ech-tls-tunnel` (or any other
+            // feature that pulls aws-lc-rs) is on, rustls' `builder()` would panic
+            // because two providers are compiled in.
+            let config = rustls::ClientConfig::builder_with_provider(Arc::new(
+                rustls::crypto::ring::default_provider(),
+            ))
+            .with_safe_default_protocol_versions()
+            .expect("rustls protocol versions are safe defaults")
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+            tokio_rustls::TlsConnector::from(Arc::new(config))
+        })
+        .clone()
 }
 
 #[derive(Debug, Clone)]

@@ -1,10 +1,11 @@
 use crate::connect::protected_tcp_connect;
+#[cfg(feature = "ech-tls-tunnel")]
+use crate::ech_tls_tunnel::{self, EchTlsTunnelConfig};
 use crate::simple_obfs::{HttpObfs, TlsObfs};
 use crate::v2ray_plugin::{self, V2rayPluginConfig};
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
 use shadowsocks::config::{Mode, ServerAddr, ServerConfig, ServerType};
 use shadowsocks::context::Context;
@@ -44,6 +45,8 @@ enum PluginKind {
     External(#[allow(dead_code)] Plugin),
     Obfs(BuiltinObfs),
     V2ray(V2rayPluginConfig),
+    #[cfg(feature = "ech-tls-tunnel")]
+    EchTlsTunnel(EchTlsTunnelConfig),
 }
 
 pub struct ShadowsocksAdapter {
@@ -72,9 +75,9 @@ impl ShadowsocksAdapter {
     ) -> Result<Self> {
         let cipher_kind = cipher
             .parse::<CipherKind>()
-            .map_err(|_| MihomoError::Config(format!("unknown cipher: {cipher}")))?;
+            .map_err(|_| MeowError::Config(format!("unknown cipher: {cipher}")))?;
         let mut server_config = ServerConfig::new((server, port), password, cipher_kind)
-            .map_err(|e| MihomoError::Config(format!("invalid ss config: {e}")))?;
+            .map_err(|e| MeowError::Config(format!("invalid ss config: {e}")))?;
         let context = Context::new_shared(ServerType::Local);
         let addr_str = format!("{server}:{port}");
 
@@ -95,6 +98,18 @@ impl ShadowsocksAdapter {
                 );
                 PluginKind::V2ray(cfg)
             }
+            #[cfg(feature = "ech-tls-tunnel")]
+            Some("ech-tls-tunnel") => {
+                let cfg = ech_tls_tunnel::parse_opts(plugin_opts.unwrap_or(""))?;
+                debug!(
+                    "SS '{}' using built-in ech-tls-tunnel: sni={} path={} ech_config_len={}",
+                    name,
+                    cfg.sni,
+                    cfg.path,
+                    cfg.ech_config.len()
+                );
+                PluginKind::EchTlsTunnel(cfg)
+            }
             Some(pname) => {
                 let plugin_config = PluginConfig {
                     plugin: pname.to_string(),
@@ -105,7 +120,7 @@ impl ShadowsocksAdapter {
                 let started =
                     Plugin::start(&plugin_config, server_config.addr(), PluginMode::Client)
                         .map_err(|e| {
-                            MihomoError::Config(format!("failed to start ss plugin '{pname}': {e}"))
+                            MeowError::Config(format!("failed to start ss plugin '{pname}': {e}"))
                         })?;
                 server_config.set_plugin_addr(ServerAddr::SocketAddr(started.local_addr()));
                 server_config.set_plugin(plugin_config);
@@ -168,9 +183,7 @@ pub(crate) fn parse_obfs_opts(plugin_opts: Option<&str>, server: &str) -> Result
         }
     }
     let mode = mode.ok_or_else(|| {
-        MihomoError::Config(
-            "simple-obfs plugin-opts must specify mode=http or mode=tls".to_string(),
-        )
+        MeowError::Config("simple-obfs plugin-opts must specify mode=http or mode=tls".to_string())
     })?;
     // An empty `host=` is treated as "not set" — fall back to the server.
     let host = host
@@ -179,7 +192,7 @@ pub(crate) fn parse_obfs_opts(plugin_opts: Option<&str>, server: &str) -> Result
     match mode.as_str() {
         "http" => Ok(BuiltinObfs::Http { host }),
         "tls" => Ok(BuiltinObfs::Tls { server: host }),
-        other => Err(MihomoError::Config(format!(
+        other => Err(MeowError::Config(format!(
             "simple-obfs unsupported mode '{other}': expected 'http' or 'tls'"
         ))),
     }
@@ -246,12 +259,12 @@ impl<S: DatagramSend + DatagramReceive + DatagramSocket + Send + Sync + 'static>
             .socket
             .recv(buf)
             .await
-            .map_err(|e| MihomoError::Proxy(format!("ss udp recv: {e}")))?;
+            .map_err(|e| MeowError::Proxy(format!("ss udp recv: {e}")))?;
         let sock_addr = match addr {
             Address::SocketAddress(sa) => sa,
             Address::DomainNameAddress(host, port) => format!("{host}:{port}")
                 .parse()
-                .map_err(|e| MihomoError::Proxy(format!("addr parse: {e}")))?,
+                .map_err(|e| MeowError::Proxy(format!("addr parse: {e}")))?,
         };
         Ok((n, sock_addr))
     }
@@ -263,12 +276,12 @@ impl<S: DatagramSend + DatagramReceive + DatagramSocket + Send + Sync + 'static>
         self.socket
             .send(&target, buf)
             .await
-            .map_err(|e| MihomoError::Proxy(format!("ss udp send: {e}")))?;
+            .map_err(|e| MeowError::Proxy(format!("ss udp send: {e}")))?;
         Ok(buf.len())
     }
 
     fn local_addr(&self) -> Result<SocketAddr> {
-        self.socket.local_addr().map_err(MihomoError::Io)
+        self.socket.local_addr().map_err(MeowError::Io)
     }
 
     fn close(&self) -> Result<()> {
@@ -318,7 +331,7 @@ impl ProxyAdapter for ShadowsocksAdapter {
                 let server_addr = format!("{}:{}", self.server, self.port);
                 let tcp = protected_tcp_connect(&server_addr)
                     .await
-                    .map_err(|e| MihomoError::Proxy(format!("ss obfs tcp connect: {e}")))?;
+                    .map_err(|e| MeowError::Proxy(format!("ss obfs tcp connect: {e}")))?;
                 let _ = tcp.set_nodelay(true);
                 match obfs.clone() {
                     BuiltinObfs::Http { host } => {
@@ -353,6 +366,17 @@ impl ProxyAdapter for ShadowsocksAdapter {
                 );
                 Ok(Box::new(SsConn(stream)))
             }
+            #[cfg(feature = "ech-tls-tunnel")]
+            PluginKind::EchTlsTunnel(cfg) => {
+                let transport = ech_tls_tunnel::dial(cfg, &self.server, self.port).await?;
+                let stream = ProxyClientStream::from_stream(
+                    Arc::clone(&self.context),
+                    transport,
+                    &self.server_config,
+                    addr,
+                );
+                Ok(Box::new(SsConn(stream)))
+            }
             PluginKind::None | PluginKind::External(_) => {
                 // Hand-roll the TCP connect so the protect hook sees the fd.
                 // If an external SIP003 plugin is running, `tcp_external_addr`
@@ -361,7 +385,7 @@ impl ProxyAdapter for ShadowsocksAdapter {
                 let server_addr = self.server_config.tcp_external_addr().to_string();
                 let tcp_stream = protected_tcp_connect(&server_addr)
                     .await
-                    .map_err(|e| MihomoError::Proxy(format!("ss tcp connect: {e}")))?;
+                    .map_err(|e| MeowError::Proxy(format!("ss tcp connect: {e}")))?;
                 let stream = ProxyClientStream::from_stream(
                     Arc::clone(&self.context),
                     tcp_stream,
@@ -375,13 +399,19 @@ impl ProxyAdapter for ShadowsocksAdapter {
 
     async fn dial_udp(&self, _metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         if matches!(self.plugin, PluginKind::V2ray(_)) {
-            return Err(MihomoError::NotSupported(
+            return Err(MeowError::NotSupported(
                 "v2ray-plugin does not support UDP relay".into(),
+            ));
+        }
+        #[cfg(feature = "ech-tls-tunnel")]
+        if matches!(self.plugin, PluginKind::EchTlsTunnel(_)) {
+            return Err(MeowError::NotSupported(
+                "ech-tls-tunnel does not support UDP relay".into(),
             ));
         }
         let socket = ProxySocket::connect(Arc::clone(&self.context), &self.server_config)
             .await
-            .map_err(|e| MihomoError::Proxy(format!("ss udp connect: {e}")))?;
+            .map_err(|e| MeowError::Proxy(format!("ss udp connect: {e}")))?;
         debug!("SS UDP connected via {}", self.addr_str);
         Ok(Box::new(SsPacketConn { socket }))
     }
@@ -489,7 +519,7 @@ mod tests {
     fn test_parse_obfs_opts_missing_mode_errors() {
         let err = parse_obfs_opts(Some("host=bing.com"), "1.2.3.4").unwrap_err();
         match err {
-            MihomoError::Config(msg) => assert!(
+            MeowError::Config(msg) => assert!(
                 msg.contains("mode=http") || msg.contains("mode=tls"),
                 "error message should mention valid modes: {msg}"
             ),
@@ -509,7 +539,7 @@ mod tests {
     fn test_parse_obfs_opts_invalid_mode_errors() {
         let err = parse_obfs_opts(Some("mode=quic;host=foo"), "1.2.3.4").unwrap_err();
         match err {
-            MihomoError::Config(msg) => {
+            MeowError::Config(msg) => {
                 assert!(msg.contains("quic"), "error should mention bad mode: {msg}");
                 assert!(
                     msg.contains("http") && msg.contains("tls"),

@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use bytes::{BufMut, BytesMut};
-use mihomo_common::{MihomoError, ProxyConn, ProxyPacketConn, Result};
-use mihomo_transport::Stream;
+use meow_common::{MeowError, ProxyConn, ProxyPacketConn, Result};
+use meow_transport::Stream;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 use super::header::{decode_response, encode_request, Cmd, VlessAddr};
@@ -48,8 +48,8 @@ impl VlessConn {
         let mut buf = BytesMut::new();
         encode_request(&mut buf, uuid_bytes, flow, cmd, dst_port, addr);
         tracing::debug!("VLESS: writing {} byte request header", buf.len());
-        stream.write_all(&buf).await.map_err(MihomoError::Io)?;
-        stream.flush().await.map_err(MihomoError::Io)?;
+        stream.write_all(&buf).await.map_err(MeowError::Io)?;
+        stream.flush().await.map_err(MeowError::Io)?;
         tracing::debug!("VLESS: request header sent, response will be read lazily");
 
         Ok(Self {
@@ -181,8 +181,8 @@ impl VlessPacketConn {
         // Write request header with Cmd::Udp.
         let mut buf = BytesMut::new();
         encode_request(&mut buf, uuid_bytes, None, Cmd::Udp, dst_port, addr);
-        stream.write_all(&buf).await.map_err(MihomoError::Io)?;
-        stream.flush().await.map_err(MihomoError::Io)?;
+        stream.write_all(&buf).await.map_err(MeowError::Io)?;
+        stream.flush().await.map_err(MeowError::Io)?;
 
         // Read and discard the response header.
         decode_response(&mut stream).await?;
@@ -201,7 +201,7 @@ impl ProxyPacketConn for VlessPacketConn {
         let mut frame = BytesMut::with_capacity(2 + buf.len());
         frame.put_u16(buf.len() as u16);
         frame.put_slice(buf);
-        guard.write_all(&frame).await.map_err(MihomoError::Io)?;
+        guard.write_all(&frame).await.map_err(MeowError::Io)?;
         Ok(buf.len())
     }
 
@@ -213,10 +213,10 @@ impl ProxyPacketConn for VlessPacketConn {
         guard
             .read_exact(&mut len_buf)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
         let pkt_len = u16::from_be_bytes(len_buf) as usize;
         if pkt_len > buf.len() {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "vless: UDP packet ({} bytes) exceeds read buffer ({} bytes)",
                 pkt_len,
                 buf.len()
@@ -225,7 +225,7 @@ impl ProxyPacketConn for VlessPacketConn {
         guard
             .read_exact(&mut buf[..pkt_len])
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
         // Return a placeholder source address (connection-oriented UDP-over-TCP
         // has no per-datagram source addr).
         let placeholder: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
@@ -233,7 +233,7 @@ impl ProxyPacketConn for VlessPacketConn {
     }
 
     fn local_addr(&self) -> Result<std::net::SocketAddr> {
-        Err(MihomoError::NotSupported(
+        Err(MeowError::NotSupported(
             "VlessPacketConn has no local UDP addr (UDP-over-TCP)".into(),
         ))
     }

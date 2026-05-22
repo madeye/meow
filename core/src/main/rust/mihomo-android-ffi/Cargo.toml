@@ -18,18 +18,18 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-# Embedded mihomo-rust engine. Pinned to v0.7.4 (matches meow-ios).
-mihomo-tunnel = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-config = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-api = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-# Local fork of mihomo-proxy with the Android `set_pre_connect_hook` patch.
-mihomo-proxy = { path = "../mihomo-proxy-patched" }
+# Embedded meow-rs engine. Pinned to current HEAD (0a7d702).
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+# Local fork of meow-proxy with the Android `set_pre_connect_hook` patch.
+meow-proxy = { path = "../meow-proxy-patched" }
 
-# Explicit pin (transitive through mihomo-tunnel; surfaced here because
+# Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
-# with the same concrete types mihomo-tunnel uses internally).
+# with the same concrete types meow-tunnel uses internally).
 dashmap = "6"
 
 # Async runtime
@@ -79,5 +79,5 @@ jni = "0.21"
 # tight memory budget.
 mimalloc = { version = "0.1", default-features = false }
 
-[patch."https://github.com/madeye/mihomo-rust.git"]
-mihomo-proxy = { path = "../mihomo-proxy-patched" }
+[patch."https://github.com/madeye/meow-rs.git"]
+meow-proxy = { path = "../meow-proxy-patched" }

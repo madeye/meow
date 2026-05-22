@@ -1,11 +1,11 @@
 //! tun2socks using netstack-smoltcp: reads raw IP packets from the Android
 //! TUN fd, routes TCP through a userspace TCP/IP stack (smoltcp), and
 //! dispatches every accepted flow in-process via
-//! `mihomo_tunnel::tcp::handle_tcp` — same pattern meow-ios uses, with no
+//! `meow_tunnel::tcp::handle_tcp` — same pattern meow-ios uses, with no
 //! SOCKS5 loopback hop.
 //!
 //! This module has no DNS-specific logic. Every in-TUN UDP/53 datagram is
-//! forwarded through `mihomo_tunnel::udp::handle_udp` with its destination
+//! forwarded through `meow_tunnel::udp::handle_udp` with its destination
 //! rewritten to mihomo's bound `DnsServer` (loopback, pinned by
 //! `engine::pinned_dns_block`). Fake-IP synthesis, reverse mapping,
 //! upstream resolution, hosts, NXDOMAIN — all DNS handling lives inside
@@ -13,16 +13,16 @@
 //!
 //! TCP/UDP destination IPs returned to apps are fake-IPs from mihomo's
 //! resolver pool. The dispatch path passes the literal `dst.ip()` to
-//! `mihomo_tunnel`, whose `pre_handle_metadata` reverses any fake-IP back to
+//! `meow_tunnel`, whose `pre_handle_metadata` reverses any fake-IP back to
 //! the qname the resolver originally returned, so SNI-aware proxy adapters
 //! (Trojan, HTTP/Host, VLESS) see the real hostname without any local table.
 
 use crate::engine;
 use crate::logging;
 use futures::{SinkExt, StreamExt};
-use mihomo_common::{ConnType, Metadata, Network, ProxyConn};
-use mihomo_tunnel::tunnel::TunnelInner;
-use mihomo_tunnel::udp::UdpSession;
+use meow_common::{ConnType, Metadata, Network, ProxyConn};
+use meow_tunnel::tunnel::TunnelInner;
+use meow_tunnel::udp::UdpSession;
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::io;
@@ -191,7 +191,7 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
     });
 
     // Reply readers for in-flight UDP/53 sessions, keyed by the
-    // mihomo-tunnel NAT key (matches what `mihomo_tunnel::udp::handle_udp`
+    // meow-tunnel NAT key (matches what `meow_tunnel::udp::handle_udp`
     // inserts into `nat_table`). Prevents spawning a second reader for the
     // same flow when the app retransmits before mihomo's reply arrives.
     let dns_reply_readers: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>> =
@@ -281,9 +281,9 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// TCP → in-process mihomo_tunnel dispatch
+// TCP → in-process meow_tunnel dispatch
 //
-// One netstack flow → one `Metadata` → one `mihomo_tunnel::tcp::handle_tcp`
+// One netstack flow → one `Metadata` → one `meow_tunnel::tcp::handle_tcp`
 // invocation. `dst_ip` is passed as-is (no local host table): mihomo's
 // `pre_handle_metadata` reverses fake-IPs back to the qname the resolver
 // returned, so SNI-aware proxy adapters see the real hostname.
@@ -319,7 +319,7 @@ async fn handle_tcp_stream(
 
     let proxy_conn: Box<dyn ProxyConn> = Box::new(NetstackConn(stream));
     let inner = tunnel.inner().clone();
-    mihomo_tunnel::tcp::handle_tcp(&inner, proxy_conn, metadata).await;
+    meow_tunnel::tcp::handle_tcp(&inner, proxy_conn, metadata).await;
     tracing::debug!("tun2socks: flow done {} -> {}", src_addr, dst_addr);
 }
 
@@ -361,7 +361,7 @@ impl ProxyConn for NetstackConn {}
 // ---------------------------------------------------------------------------
 // UDP/53 → mihomo tunnel dispatch
 //
-// One in-TUN DNS query → one `mihomo_tunnel::udp::handle_udp` call with the
+// One in-TUN DNS query → one `meow_tunnel::udp::handle_udp` call with the
 // destination rewritten to mihomo's bound loopback `DnsServer`. The tunnel's
 // rule engine matches the loopback address, dials DIRECT UDP, and inserts
 // the session into the NAT table; we then spawn a reply reader that pulls
@@ -408,7 +408,7 @@ async fn dispatch_dns_via_tunnel(
     };
 
     let inner = tunnel.inner().clone();
-    mihomo_tunnel::udp::handle_udp(&inner, &payload, app_src, metadata).await;
+    meow_tunnel::udp::handle_udp(&inner, &payload, app_src, metadata).await;
 
     let key = (app_src, dispatch_dst);
     if !reply_readers.lock().insert(key) {

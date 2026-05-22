@@ -1,5 +1,5 @@
 [package]
-name = "mihomo-proxy"
+name = "meow-proxy"
 version = "0.6.0"
 edition = "2021"
 rust-version = "1.88"
@@ -10,11 +10,18 @@ ss = ["dep:shadowsocks"]
 trojan = []
 vless = []
 vless-vision = ["vless"]
+# Upstream-defined feature flags. Not built here — the optional adapters
+# (anytls-rs, quinn, ECH rustls) pull non-trivial deps we don't need on
+# Android. Declared so the corresponding `#[cfg(feature = ...)]` blocks
+# inherited from upstream don't trip "unexpected cfg value" warnings.
+anytls = []
+hysteria2 = []
+ech-tls-tunnel = []
 
 [dependencies]
-mihomo-common = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-dns = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
-mihomo-transport = { git = "https://github.com/madeye/mihomo-rust.git", tag = "v0.7.4" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
 tokio = { version = "1", features = ["full"] }
 shadowsocks = { version = "1.21", features = ["aead-cipher-2022", "stream-cipher"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }

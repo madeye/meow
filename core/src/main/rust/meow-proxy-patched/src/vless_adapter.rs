@@ -17,9 +17,8 @@
 //! See `vless/header.rs` for the complete byte-level specification.
 
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
 use tracing::debug;
 
@@ -81,12 +80,12 @@ impl VlessAdapter {
     }
 
     /// Dial a raw TCP + transport-chain stream to the VLESS server.
-    async fn dial_stream(&self) -> Result<Box<dyn mihomo_transport::Stream>> {
+    async fn dial_stream(&self) -> Result<Box<dyn meow_transport::Stream>> {
         // Android: route through the global pre-connect hook so the outbound
         // socket is protected via VpnService.protect(fd) before connect.
         let tcp = protected_tcp_connect(&self.addr_str)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
         self.transport.connect(Box::new(tcp)).await
     }
 }
@@ -129,7 +128,7 @@ impl ProxyAdapter for VlessAdapter {
             None => None,
             #[cfg(not(feature = "vless-vision"))]
             Some(VlessFlow::XtlsRprxVision) => {
-                return Err(MihomoError::Config(
+                return Err(MeowError::Config(
                     "vless: xtls-rprx-vision requires the `vless-vision` Cargo feature; \
                      rebuild with --features vless-vision"
                         .into(),
@@ -181,7 +180,7 @@ impl ProxyAdapter for VlessAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mihomo_common::AdapterType;
+    use meow_common::AdapterType;
 
     fn make_adapter(flow: Option<VlessFlow>, udp: bool) -> VlessAdapter {
         VlessAdapter::new(
@@ -231,7 +230,7 @@ mod tests {
 
     #[test]
     fn vless_tcp_with_tls_chain() {
-        use mihomo_transport::tls::{TlsConfig, TlsLayer};
+        use meow_transport::tls::{TlsConfig, TlsLayer};
         let mut chain = TransportChain::empty();
         let tls_cfg = TlsConfig::new("example.com");
         let tls_layer = TlsLayer::new(&tls_cfg).expect("TlsLayer");
@@ -244,8 +243,8 @@ mod tests {
 
     #[test]
     fn vless_ws_with_tls_chain_ordered() {
-        use mihomo_transport::tls::{TlsConfig, TlsLayer};
-        use mihomo_transport::ws::{WsConfig, WsLayer};
+        use meow_transport::tls::{TlsConfig, TlsLayer};
+        use meow_transport::ws::{WsConfig, WsLayer};
         let mut chain = TransportChain::empty();
         let tls_cfg = TlsConfig::new("example.com");
         chain.push(Box::new(TlsLayer::new(&tls_cfg).expect("TlsLayer")));

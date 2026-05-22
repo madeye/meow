@@ -1,6 +1,6 @@
 //! Trojan outbound proxy adapter.
 //!
-//! TLS is provided by `mihomo_transport::tls::TlsLayer` (M1.A-1 migration).
+//! TLS is provided by `meow_transport::tls::TlsLayer` (M1.A-1 migration).
 //! Protocol logic — SHA-224 password hash, CRLF header, SOCKS5 address
 //! encoding — remains here unchanged.
 //!
@@ -9,13 +9,11 @@
 //! `ATYP | DST.ADDR | DST.PORT | LENGTH(u16 BE) | CRLF | PAYLOAD`,
 //! matching trojan-go / clash-meta upstream.
 
-use crate::connect::protected_tcp_connect;
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
-use mihomo_transport::{
+use meow_transport::{
     tls::{TlsConfig, TlsLayer},
     Stream as TransportStream, Transport,
 };
@@ -25,6 +23,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::Mutex;
 use tracing::debug;
 
+use crate::connect::protected_tcp_connect;
 use crate::stream_conn::StreamConn;
 use crate::transport_to_proxy_err;
 
@@ -87,7 +86,8 @@ impl TrojanAdapter {
     }
 
     fn build_header(&self, metadata: &Metadata, cmd: u8) -> Vec<u8> {
-        let mut buf = Vec::new();
+        // Worst case: 56 (hex password) + 2 (CRLF) + 1 (cmd) + 1+255 (FQDN) + 2 (port) + 2 (CRLF) = 319 B.
+        let mut buf = Vec::with_capacity(320);
         // hex password + CRLF
         buf.extend_from_slice(self.hex_password.as_bytes());
         buf.extend_from_slice(b"\r\n");
@@ -111,7 +111,7 @@ impl TrojanAdapter {
         // socket loops back into the VPN TUN.
         let tcp = protected_tcp_connect(&self.addr_str)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         let mut stream = self
             .tls_layer
@@ -120,7 +120,7 @@ impl TrojanAdapter {
             .map_err(transport_to_proxy_err)?;
 
         let header = self.build_header(metadata, cmd);
-        stream.write_all(&header).await.map_err(MihomoError::Io)?;
+        stream.write_all(&header).await.map_err(MeowError::Io)?;
         Ok(stream)
     }
 }
@@ -179,47 +179,35 @@ fn encode_socks5_addr_socket(buf: &mut Vec<u8>, addr: &SocketAddr) {
 /// almost always echo the IP form anyway.
 async fn read_socks5_addr<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<SocketAddr> {
     let mut atyp = [0u8; 1];
-    reader
-        .read_exact(&mut atyp)
-        .await
-        .map_err(MihomoError::Io)?;
+    reader.read_exact(&mut atyp).await.map_err(MeowError::Io)?;
     Ok(match atyp[0] {
         ATYP_IPV4 => {
             let mut ip = [0u8; 4];
-            reader.read_exact(&mut ip).await.map_err(MihomoError::Io)?;
+            reader.read_exact(&mut ip).await.map_err(MeowError::Io)?;
             let mut port = [0u8; 2];
-            reader
-                .read_exact(&mut port)
-                .await
-                .map_err(MihomoError::Io)?;
+            reader.read_exact(&mut port).await.map_err(MeowError::Io)?;
             SocketAddr::new(IpAddr::V4(Ipv4Addr::from(ip)), u16::from_be_bytes(port))
         }
         ATYP_IPV6 => {
             let mut ip = [0u8; 16];
-            reader.read_exact(&mut ip).await.map_err(MihomoError::Io)?;
+            reader.read_exact(&mut ip).await.map_err(MeowError::Io)?;
             let mut port = [0u8; 2];
-            reader
-                .read_exact(&mut port)
-                .await
-                .map_err(MihomoError::Io)?;
+            reader.read_exact(&mut port).await.map_err(MeowError::Io)?;
             SocketAddr::new(IpAddr::V6(Ipv6Addr::from(ip)), u16::from_be_bytes(port))
         }
         ATYP_DOMAIN => {
             let mut len = [0u8; 1];
-            reader.read_exact(&mut len).await.map_err(MihomoError::Io)?;
+            reader.read_exact(&mut len).await.map_err(MeowError::Io)?;
             let mut domain = vec![0u8; len[0] as usize];
             reader
                 .read_exact(&mut domain)
                 .await
-                .map_err(MihomoError::Io)?;
+                .map_err(MeowError::Io)?;
             let mut port = [0u8; 2];
-            reader
-                .read_exact(&mut port)
-                .await
-                .map_err(MihomoError::Io)?;
+            reader.read_exact(&mut port).await.map_err(MeowError::Io)?;
             let port = u16::from_be_bytes(port);
             let domain_str = std::str::from_utf8(&domain)
-                .map_err(|e| MihomoError::Proxy(format!("trojan udp: bad domain utf8: {e}")))?;
+                .map_err(|e| MeowError::Proxy(format!("trojan udp: bad domain utf8: {e}")))?;
             // Try IP-literal first; otherwise fall back to UNSPECIFIED so the
             // tunnel still has a usable SocketAddr without a DNS round-trip.
             if let Ok(ip) = domain_str.parse::<IpAddr>() {
@@ -229,7 +217,7 @@ async fn read_socks5_addr<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<Soc
             }
         }
         other => {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "trojan udp: unknown ATYP {other:#x}"
             )))
         }
@@ -268,16 +256,13 @@ impl ProxyPacketConn for TrojanPacketConn {
         reader
             .read_exact(&mut len_bytes)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
         let length = u16::from_be_bytes(len_bytes) as usize;
 
         let mut crlf = [0u8; 2];
-        reader
-            .read_exact(&mut crlf)
-            .await
-            .map_err(MihomoError::Io)?;
+        reader.read_exact(&mut crlf).await.map_err(MeowError::Io)?;
         if &crlf != b"\r\n" {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "trojan udp: expected CRLF, got {crlf:?}"
             )));
         }
@@ -289,21 +274,18 @@ impl ProxyPacketConn for TrojanPacketConn {
             reader
                 .read_exact(&mut buf[..to_copy])
                 .await
-                .map_err(MihomoError::Io)?;
+                .map_err(MeowError::Io)?;
         }
         if length > to_copy {
             let mut sink = vec![0u8; length - to_copy];
-            reader
-                .read_exact(&mut sink)
-                .await
-                .map_err(MihomoError::Io)?;
+            reader.read_exact(&mut sink).await.map_err(MeowError::Io)?;
         }
         Ok((to_copy, addr))
     }
 
     async fn write_packet(&self, buf: &[u8], addr: &SocketAddr) -> Result<usize> {
         if buf.len() > u16::MAX as usize {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "trojan udp: packet too large ({} > {})",
                 buf.len(),
                 u16::MAX
@@ -318,8 +300,8 @@ impl ProxyPacketConn for TrojanPacketConn {
         frame.extend_from_slice(buf);
 
         let mut writer = self.writer.lock().await;
-        writer.write_all(&frame).await.map_err(MihomoError::Io)?;
-        writer.flush().await.map_err(MihomoError::Io)?;
+        writer.write_all(&frame).await.map_err(MeowError::Io)?;
+        writer.flush().await.map_err(MeowError::Io)?;
         Ok(buf.len())
     }
 
@@ -364,7 +346,7 @@ impl ProxyAdapter for TrojanAdapter {
 
     async fn dial_udp(&self, metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         if !self.support_udp {
-            return Err(MihomoError::NotSupported(
+            return Err(MeowError::NotSupported(
                 "Trojan UDP is disabled for this proxy (set `udp: true`)".into(),
             ));
         }

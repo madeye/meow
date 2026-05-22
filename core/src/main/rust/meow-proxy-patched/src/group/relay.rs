@@ -18,9 +18,9 @@
 //! upstream: adapter/outbound/relay.go
 
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, Proxy, ProxyAdapter, ProxyConn, ProxyHealth,
-    ProxyPacketConn, Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, Proxy, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
+    Result,
 };
 use std::sync::Arc;
 use tracing::debug;
@@ -83,7 +83,7 @@ pub(crate) async fn relay_tcp(
         proxies[0]
             .dial_tcp(&meta)
             .await
-            .map_err(|e| MihomoError::RelayHopFailed {
+            .map_err(|e| MeowError::RelayHopFailed {
                 hop: 0,
                 source: Box::new(e),
             })?;
@@ -97,12 +97,14 @@ pub(crate) async fn relay_tcp(
             relay.target = %meta.remote_address(),
             "relay: connect_over hop {i}"
         );
-        conn = proxies[i].connect_over(conn, &meta).await.map_err(|e| {
-            MihomoError::RelayHopFailed {
-                hop: i,
-                source: Box::new(e),
-            }
-        })?;
+        conn =
+            proxies[i]
+                .connect_over(conn, &meta)
+                .await
+                .map_err(|e| MeowError::RelayHopFailed {
+                    hop: i,
+                    source: Box::new(e),
+                })?;
     }
 
     // proxy[N-1]: final hop connects to the actual target.
@@ -116,7 +118,7 @@ pub(crate) async fn relay_tcp(
     conn = proxies[last]
         .connect_over(conn, final_target)
         .await
-        .map_err(|e| MihomoError::RelayHopFailed {
+        .map_err(|e| MeowError::RelayHopFailed {
             hop: last,
             source: Box::new(e),
         })?;
@@ -208,7 +210,7 @@ impl ProxyAdapter for RelayGroup {
     /// NOT a silent failure — Class A ADR-0002.
     async fn dial_udp(&self, metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         if !self.support_udp() {
-            return Err(MihomoError::UdpNotSupported);
+            return Err(MeowError::UdpNotSupported);
         }
         relay_udp(&self.proxies, metadata).await
     }
@@ -237,7 +239,7 @@ impl ProxyAdapter for RelayGroup {
                 proxy
                     .connect_over(conn, &meta)
                     .await
-                    .map_err(|e| MihomoError::RelayHopFailed {
+                    .map_err(|e| MeowError::RelayHopFailed {
                         hop: i,
                         source: Box::new(e),
                     })?;
@@ -267,7 +269,7 @@ impl Proxy for RelayGroup {
         self.health.last_delay()
     }
 
-    fn delay_history(&self) -> Vec<mihomo_common::DelayHistory> {
+    fn delay_history(&self) -> Vec<meow_common::DelayHistory> {
         self.health.delay_history()
     }
 
@@ -281,7 +283,7 @@ impl Proxy for RelayGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mihomo_common::{DelayHistory, MihomoError, ProxyConn, ProxyHealth, ProxyPacketConn};
+    use meow_common::{DelayHistory, MeowError, ProxyConn, ProxyHealth, ProxyPacketConn};
     use std::net::SocketAddr;
     use std::sync::Arc;
 
@@ -306,9 +308,9 @@ mod tests {
         /// Each dial call (dial_tcp or connect_over) records the target host.
         last_dial_host: Arc<parking_lot::Mutex<Option<String>>>,
         /// If `Some`, `connect_over` returns this error.
-        fail_with: Arc<parking_lot::Mutex<Option<MihomoError>>>,
+        fail_with: Arc<parking_lot::Mutex<Option<MeowError>>>,
         /// If `Some`, `dial_tcp` returns this error.
-        dial_fail_with: Arc<parking_lot::Mutex<Option<MihomoError>>>,
+        dial_fail_with: Arc<parking_lot::Mutex<Option<MeowError>>>,
     }
 
     impl MockProxy {
@@ -337,13 +339,13 @@ mod tests {
             Self::new(name, server, port, marker) // udp defaults to false
         }
 
-        fn failing(name: &str, server: &str, port: u16, err: MihomoError) -> Arc<Self> {
+        fn failing(name: &str, server: &str, port: u16, err: MeowError) -> Arc<Self> {
             let m = Self::new(name, server, port, 0);
             *m.fail_with.lock() = Some(err);
             m
         }
 
-        fn dial_failing(name: &str, server: &str, port: u16, err: MihomoError) -> Arc<Self> {
+        fn dial_failing(name: &str, server: &str, port: u16, err: MeowError) -> Arc<Self> {
             let m = Self::new(name, server, port, 0);
             *m.dial_fail_with.lock() = Some(err);
             m
@@ -399,7 +401,7 @@ mod tests {
     #[async_trait]
     impl ProxyPacketConn for NopPacketConn {
         async fn read_packet(&self, _buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-            Err(MihomoError::NotSupported("nop".into()))
+            Err(MeowError::NotSupported("nop".into()))
         }
         async fn write_packet(&self, buf: &[u8], _addr: &SocketAddr) -> Result<usize> {
             Ok(buf.len())
@@ -441,7 +443,7 @@ mod tests {
             if self.udp {
                 Ok(Box::new(NopPacketConn))
             } else {
-                Err(MihomoError::NotSupported("mock: no UDP".into()))
+                Err(MeowError::NotSupported("mock: no UDP".into()))
             }
         }
 
@@ -691,7 +693,7 @@ mod tests {
         };
         let err = group.dial_udp(&meta).await.err().expect("must error");
         assert!(
-            matches!(err, MihomoError::UdpNotSupported),
+            matches!(err, MeowError::UdpNotSupported),
             "must be UdpNotSupported; got {err:?}"
         );
     }
@@ -712,7 +714,7 @@ mod tests {
             ..Default::default()
         };
         let err = group.dial_udp(&meta).await.err().expect("must error");
-        assert!(matches!(err, MihomoError::UdpNotSupported));
+        assert!(matches!(err, MeowError::UdpNotSupported));
     }
 
     // C4: last hop lacks UDP → Err(UdpNotSupported)
@@ -730,7 +732,7 @@ mod tests {
             ..Default::default()
         };
         let err = group.dial_udp(&meta).await.err().expect("must error");
-        assert!(matches!(err, MihomoError::UdpNotSupported));
+        assert!(matches!(err, MeowError::UdpNotSupported));
     }
 
     // C5: support_udp() reflects all members
@@ -762,7 +764,7 @@ mod tests {
     #[tokio::test]
     async fn relay_hop_failure_includes_hop_index() {
         let a = MockProxy::new("A", "10.0.0.1", 1080, 1);
-        let b = MockProxy::failing("B", "10.0.0.2", 1080, MihomoError::Proxy("inner".into()));
+        let b = MockProxy::failing("B", "10.0.0.2", 1080, MeowError::Proxy("inner".into()));
 
         let proxies: Vec<Arc<dyn Proxy>> = vec![a, b];
         let group = RelayGroup::new("hop1-fail", proxies);
@@ -774,7 +776,7 @@ mod tests {
 
         let err = group.dial_tcp(&meta).await.err().expect("must error");
         assert!(
-            matches!(err, MihomoError::RelayHopFailed { hop: 1, .. }),
+            matches!(err, MeowError::RelayHopFailed { hop: 1, .. }),
             "error must be RelayHopFailed at hop 1; got {err:?}"
         );
     }
@@ -786,7 +788,7 @@ mod tests {
             "A",
             "10.0.0.1",
             1080,
-            MihomoError::Proxy("conn refused".into()),
+            MeowError::Proxy("conn refused".into()),
         );
         let b = MockProxy::new("B", "10.0.0.2", 1080, 2);
 
@@ -800,7 +802,7 @@ mod tests {
 
         let err = group.dial_tcp(&meta).await.err().expect("must error");
         assert!(
-            matches!(err, MihomoError::RelayHopFailed { hop: 0, .. }),
+            matches!(err, MeowError::RelayHopFailed { hop: 0, .. }),
             "error must be RelayHopFailed at hop 0; got {err:?}"
         );
     }
@@ -810,7 +812,7 @@ mod tests {
     async fn relay_last_hop_failure_includes_correct_index() {
         let a = MockProxy::new("A", "10.0.0.1", 1080, 1);
         let b = MockProxy::new("B", "10.0.0.2", 1080, 2);
-        let c = MockProxy::failing("C", "10.0.0.3", 1080, MihomoError::Proxy("timeout".into()));
+        let c = MockProxy::failing("C", "10.0.0.3", 1080, MeowError::Proxy("timeout".into()));
 
         let proxies: Vec<Arc<dyn Proxy>> = vec![a, b, c];
         let group = RelayGroup::new("hop2-fail", proxies);
@@ -822,7 +824,7 @@ mod tests {
 
         let err = group.dial_tcp(&meta).await.err().expect("must error");
         assert!(
-            matches!(err, MihomoError::RelayHopFailed { hop: 2, .. }),
+            matches!(err, MeowError::RelayHopFailed { hop: 2, .. }),
             "error must be RelayHopFailed at hop 2; got {err:?}"
         );
     }
@@ -831,12 +833,7 @@ mod tests {
     #[tokio::test]
     async fn relay_hop_failure_source_is_inner_error() {
         let a = MockProxy::new("A", "10.0.0.1", 1080, 1);
-        let b = MockProxy::failing(
-            "B",
-            "10.0.0.2",
-            1080,
-            MihomoError::Proxy("inner-msg".into()),
-        );
+        let b = MockProxy::failing("B", "10.0.0.2", 1080, MeowError::Proxy("inner-msg".into()));
 
         let proxies: Vec<Arc<dyn Proxy>> = vec![a, b];
         let group = RelayGroup::new("source-check", proxies);
@@ -848,9 +845,9 @@ mod tests {
 
         let err = group.dial_tcp(&meta).await.err().expect("must error");
         match err {
-            MihomoError::RelayHopFailed { hop: 1, source } => {
+            MeowError::RelayHopFailed { hop: 1, source } => {
                 assert!(
-                    matches!(*source, MihomoError::Proxy(_)),
+                    matches!(*source, MeowError::Proxy(_)),
                     "source must be inner Proxy error; got {source:?}"
                 );
                 let msg = source.to_string();
@@ -867,7 +864,7 @@ mod tests {
     // (verified by the absence of anyhow::Context / .context( in relay.rs;
     // cannot be a #[test] but documented here per test plan G1/D5)
     //
-    // grep "anyhow::Context\|\.context(" crates/mihomo-proxy/src/group/relay.rs
+    // grep "anyhow::Context\|\.context(" crates/meow-proxy/src/group/relay.rs
     // must return zero matches.
 
     // ─── E. Nested relay (relay-of-relay) ─────────────────────────────────
@@ -959,7 +956,7 @@ mod tests {
     // ─── G. Structural invariants ─────────────────────────────────────────
 
     // G2: debug_assert is present in relay.rs (grep guard-rail)
-    // "grep debug_assert crates/mihomo-proxy/src/group/relay.rs" → non-empty.
+    // "grep debug_assert crates/meow-proxy/src/group/relay.rs" → non-empty.
     // The parse-time hard-error prevents production use; debug_assert catches
     // test-harness mistakes. Verified: relay_tcp() and RelayGroup::new() both
     // contain debug_assert!(proxies.len() >= 2).

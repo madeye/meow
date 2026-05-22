@@ -19,12 +19,11 @@
 
 use std::net::IpAddr;
 
-use crate::connect::protected_tcp_connect;
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
+use crate::connect::protected_tcp_connect;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(test)]
 use tokio::net::TcpStream;
@@ -91,27 +90,26 @@ impl Socks5Adapter {
     }
 
     /// Dial TCP to the proxy server, optionally wrapping in TLS.
-    async fn dial_stream(&self) -> Result<Box<dyn mihomo_transport::Stream>> {
+    async fn dial_stream(&self) -> Result<Box<dyn meow_transport::Stream>> {
         // Android: route through the global pre-connect hook so the outbound
         // socket is protected via VpnService.protect(fd) before connect.
         let tcp = protected_tcp_connect(&format!("{}:{}", self.server, self.port))
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         if self.tls {
-            use mihomo_transport::tls::{TlsConfig, TlsLayer};
-            use mihomo_transport::Transport;
+            use meow_transport::tls::{TlsConfig, TlsLayer};
+            use meow_transport::Transport;
 
             let tls_cfg = TlsConfig {
                 skip_cert_verify: self.skip_cert_verify,
                 ..TlsConfig::new(&self.server)
             };
-            let tls_layer =
-                TlsLayer::new(&tls_cfg).map_err(|e| MihomoError::Proxy(e.to_string()))?;
+            let tls_layer = TlsLayer::new(&tls_cfg).map_err(|e| MeowError::Proxy(e.to_string()))?;
             tls_layer
                 .connect(Box::new(tcp))
                 .await
-                .map_err(|e| MihomoError::Proxy(e.to_string()))
+                .map_err(|e| MeowError::Proxy(e.to_string()))
         } else {
             Ok(Box::new(tcp))
         }
@@ -141,20 +139,20 @@ impl Socks5Adapter {
         //
         // ADR-0002 Class A divergence: upstream socks5.go does not guard these.
         if !target_host.is_empty() && target_host.len() > 255 {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "socks5: hostname too long ({} bytes, max 255 per protocol)",
                 target_host.len()
             )));
         }
         if let Some((user, pass)) = &self.auth {
             if user.len() > 255 {
-                return Err(MihomoError::Proxy(format!(
+                return Err(MeowError::Proxy(format!(
                     "socks5: username too long ({} bytes, max 255 per RFC 1929)",
                     user.len()
                 )));
             }
             if pass.len() > 255 {
-                return Err(MihomoError::Proxy(format!(
+                return Err(MeowError::Proxy(format!(
                     "socks5: password too long ({} bytes, max 255 per RFC 1929)",
                     pass.len()
                 )));
@@ -172,16 +170,16 @@ impl Socks5Adapter {
         greeting.push(VERSION);
         greeting.push(methods.len() as u8);
         greeting.extend_from_slice(methods);
-        stream.write_all(&greeting).await.map_err(MihomoError::Io)?;
+        stream.write_all(&greeting).await.map_err(MeowError::Io)?;
 
         let mut server_choice = [0u8; 2];
         stream
             .read_exact(&mut server_choice)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         if server_choice[0] != VERSION {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "socks5: unexpected version byte {:#04x} in method selection",
                 server_choice[0]
             )));
@@ -189,7 +187,7 @@ impl Socks5Adapter {
 
         let chosen = server_choice[1];
         if chosen == METHOD_NO_ACCEPTABLE {
-            return Err(MihomoError::NoAcceptableMethod);
+            return Err(MeowError::NoAcceptableMethod);
         }
 
         // ── Step 2: Username/password sub-negotiation (if server chose 0x02) ──
@@ -209,16 +207,16 @@ impl Socks5Adapter {
             auth_req.extend_from_slice(user.as_bytes());
             auth_req.push(pass.len() as u8);
             auth_req.extend_from_slice(pass.as_bytes());
-            stream.write_all(&auth_req).await.map_err(MihomoError::Io)?;
+            stream.write_all(&auth_req).await.map_err(MeowError::Io)?;
 
             let mut auth_resp = [0u8; 2];
             stream
                 .read_exact(&mut auth_resp)
                 .await
-                .map_err(MihomoError::Io)?;
+                .map_err(MeowError::Io)?;
 
             if auth_resp[1] != AUTH_SUCCESS {
-                return Err(MihomoError::ProxyAuthFailed);
+                return Err(MeowError::ProxyAuthFailed);
             }
         }
 
@@ -240,7 +238,7 @@ impl Socks5Adapter {
                     req.extend_from_slice(&v6.octets());
                 }
                 None => {
-                    return Err(MihomoError::Proxy(
+                    return Err(MeowError::Proxy(
                         "socks5: no destination address in metadata".into(),
                     ));
                 }
@@ -255,7 +253,7 @@ impl Socks5Adapter {
 
         req.push((target_port >> 8) as u8);
         req.push((target_port & 0xFF) as u8);
-        stream.write_all(&req).await.map_err(MihomoError::Io)?;
+        stream.write_all(&req).await.map_err(MeowError::Io)?;
 
         // ── Step 4: CONNECT response ──────────────────────────────────────────
         // [0x05, rep, 0x00, atyp, bnd_addr..., bnd_port_hi, bnd_port_lo]
@@ -263,10 +261,10 @@ impl Socks5Adapter {
         stream
             .read_exact(&mut resp_hdr)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         if resp_hdr[1] != REPLY_SUCCESS {
-            return Err(MihomoError::Socks5ConnectFailed(resp_hdr[1]));
+            return Err(MeowError::Socks5ConnectFailed(resp_hdr[1]));
         }
 
         // Drain the bound address (we don't use it for TCP relay).
@@ -287,12 +285,12 @@ async fn drain_socks5_addr<S: tokio::io::AsyncRead + Unpin>(
         ATYP_IPV4 => 4,
         ATYP_DOMAIN => {
             let mut len = [0u8; 1];
-            stream.read_exact(&mut len).await.map_err(MihomoError::Io)?;
+            stream.read_exact(&mut len).await.map_err(MeowError::Io)?;
             len[0] as usize
         }
         ATYP_IPV6 => 16,
         other => {
-            return Err(MihomoError::Proxy(format!(
+            return Err(MeowError::Proxy(format!(
                 "socks5: unknown atyp {other:#04x} in response"
             )));
         }
@@ -302,7 +300,7 @@ async fn drain_socks5_addr<S: tokio::io::AsyncRead + Unpin>(
     stream
         .read_exact(&mut discard)
         .await
-        .map_err(MihomoError::Io)?;
+        .map_err(MeowError::Io)?;
     Ok(())
 }
 
@@ -346,7 +344,7 @@ impl ProxyAdapter for Socks5Adapter {
 
     async fn dial_udp(&self, _metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         // SOCKS5 UDP ASSOCIATE not implemented in M1. ADR-0002 Class B.
-        Err(MihomoError::NotSupported(
+        Err(MeowError::NotSupported(
             "socks5: UDP ASSOCIATE not supported in M1 (deferred)".into(),
         ))
     }
@@ -391,7 +389,7 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
 
     use super::*;
-    use mihomo_common::MihomoError;
+    use meow_common::MeowError;
 
     // ─── Mock SOCKS5 server ───────────────────────────────────────────────────
 
@@ -610,7 +608,7 @@ mod tests {
         let meta = meta_with_host("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::NoAcceptableMethod),
+            matches!(err, MeowError::NoAcceptableMethod),
             "0xFF must map to NoAcceptableMethod; got {err:?}"
         );
     }
@@ -652,7 +650,7 @@ mod tests {
         let meta = meta_with_host("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::ProxyAuthFailed),
+            matches!(err, MeowError::ProxyAuthFailed),
             "auth failure must map to ProxyAuthFailed; got {err:?}"
         );
     }
@@ -670,7 +668,7 @@ mod tests {
         let meta = meta_with_host("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::Socks5ConnectFailed(0x02)),
+            matches!(err, MeowError::Socks5ConnectFailed(0x02)),
             "rep=0x02 must map to Socks5ConnectFailed(0x02); got {err:?}"
         );
     }
@@ -740,7 +738,7 @@ mod tests {
         let meta = meta_with_host(&long_host, 80);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::Proxy(ref msg) if msg.contains("hostname too long")),
+            matches!(err, MeowError::Proxy(ref msg) if msg.contains("hostname too long")),
             "hostname > 255 bytes must return Proxy error; got {err:?}"
         );
     }
@@ -759,7 +757,7 @@ mod tests {
         let meta = meta_with_host("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::Proxy(ref msg) if msg.contains("username too long")),
+            matches!(err, MeowError::Proxy(ref msg) if msg.contains("username too long")),
             "username > 255 bytes must return Proxy error; got {err:?}"
         );
     }
@@ -778,7 +776,7 @@ mod tests {
         let meta = meta_with_host("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::Proxy(ref msg) if msg.contains("password too long")),
+            matches!(err, MeowError::Proxy(ref msg) if msg.contains("password too long")),
             "password > 255 bytes must return Proxy error; got {err:?}"
         );
     }
@@ -797,7 +795,7 @@ mod tests {
             .err()
             .expect("dial_udp should return Err");
         assert!(
-            matches!(err, MihomoError::NotSupported(_)),
+            matches!(err, MeowError::NotSupported(_)),
             "dial_udp must return NotSupported; got {err:?}"
         );
     }

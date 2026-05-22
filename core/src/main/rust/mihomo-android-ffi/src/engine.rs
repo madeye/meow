@@ -4,7 +4,7 @@
 //!
 //!   * No loopback listener bind: `port`, `socks-port`, `mixed-port`,
 //!     `tproxy-port`, and `listeners:` are stripped. tun2socks dispatches
-//!     every TCP flow in-process via `mihomo_tunnel::tcp::handle_tcp`.
+//!     every TCP flow in-process via `meow_tunnel::tcp::handle_tcp`.
 //!   * No SNI / ALPN sniffing: redundant once DNS is fake-IP, because
 //!     `pre_handle_metadata` reverses the fake-IP back to the qname the
 //!     resolver originally returned.
@@ -17,8 +17,8 @@
 //! platforms.
 
 use anyhow::{Context, Result};
-use mihomo_config::{load_config, Config};
-use mihomo_tunnel::Tunnel;
+use meow_config::{load_config, Config};
+use meow_tunnel::Tunnel;
 use std::path::{Path, PathBuf};
 
 /// Returns a clone of the running engine's `Tunnel` handle, or `None` if the
@@ -30,7 +30,7 @@ pub fn tunnel() -> Option<Tunnel> {
 /// Pinned DNS block injected into every engine config. Configures mihomo's
 /// resolver in fake-IP mode with the FFI's chosen CIDR; the tun2socks
 /// UDP/53 intercept then hands every in-TUN datagram straight to
-/// `mihomo_dns::DnsServer::handle_query`, so this block is the single source
+/// `meow_dns::DnsServer::handle_query`, so this block is the single source
 /// of truth for synthesis, reverse mapping, AAAA / hosts / NXDOMAIN, and
 /// upstream nameserver selection.
 ///
@@ -44,10 +44,10 @@ pub fn tunnel() -> Option<Tunnel> {
 /// socket. tun2socks no longer parses DNS payloads or calls
 /// `DnsServer::handle_query` directly — every in-TUN UDP/53 datagram is
 /// rewritten to `127.0.0.1:1053` and dispatched through
-/// `mihomo_tunnel::udp::handle_udp` so DNS rides the same in-process tunnel
+/// `meow_tunnel::udp::handle_udp` so DNS rides the same in-process tunnel
 /// path application traffic does. mihomo's tunnel routes the packet to its
 /// own bound DnsServer (via the DIRECT proxy + the NAT/reply machinery in
-/// mihomo-tunnel), so fake-IP synthesis, upstream resolution, hosts,
+/// meow-tunnel), so fake-IP synthesis, upstream resolution, hosts,
 /// NXDOMAIN — all DNS logic — stays inside mihomo, not in the FFI.
 pub fn pinned_dns_block() -> serde_yaml::Value {
     let yaml = r#"

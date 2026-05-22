@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, DelayHistory, Metadata, MihomoError, Proxy, ProxyAdapter, ProxyConn, ProxyHealth,
+use meow_common::{
+    AdapterType, DelayHistory, MeowError, Metadata, Proxy, ProxyAdapter, ProxyConn, ProxyHealth,
     ProxyPacketConn, Result,
 };
 use std::net::IpAddr;
@@ -38,45 +38,73 @@ impl LoadBalanceGroup {
     ///
     /// TODO(perf M2): cache alive-set or use a pre-filtered index if profiling shows this hot
     pub fn select(&self, metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
-        // upstream: adapter/outbound/loadbalance.go::RoundRobin.Addr /
-        //           adapter/outbound/loadbalance.go::ConsistentHashing.Addr
-        let alive: Vec<_> = self.proxies.iter().filter(|p| p.alive()).cloned().collect();
-        if alive.is_empty() {
-            return None;
-        }
-        let idx = match self.strategy {
-            LbStrategy::RoundRobin => self.counter.fetch_add(1, Ordering::Relaxed) % alive.len(),
-            LbStrategy::ConsistentHashing => {
-                // FNV-1a 32-bit, matching upstream adapter/outbound/loadbalance.go hash logic shape.
-                // Note: upstream uses FNV-1 (not FNV-1a); we use FNV-1a which has slightly better
-                // distribution. The hash is stable for a given src IP + proxy list — Class B ADR-0002.
-                let hash = fnv1a(&src_ip_bytes(metadata));
-                (hash as usize) % alive.len()
+        match self.strategy {
+            LbStrategy::RoundRobin => {
+                let alive_count = self.proxies.iter().filter(|p| p.alive()).count();
+                if alive_count == 0 {
+                    return None;
+                }
+                let target_idx = self.counter.fetch_add(1, Ordering::Relaxed) % alive_count;
+                self.proxies
+                    .iter()
+                    .filter(|p| p.alive())
+                    .nth(target_idx)
+                    .cloned()
             }
-        };
-        Some(Arc::clone(&alive[idx]))
+            LbStrategy::ConsistentHashing => {
+                let alive_count = self.proxies.iter().filter(|p| p.alive()).count();
+                if alive_count == 0 {
+                    return None;
+                }
+                let (bytes, len) = src_ip_bytes(metadata);
+                let hash = fnv1a(&bytes[..len]);
+                let target_idx = (hash as usize) % alive_count;
+                self.proxies
+                    .iter()
+                    .filter(|p| p.alive())
+                    .nth(target_idx)
+                    .cloned()
+            }
+        }
     }
 
     fn select_udp(&self, metadata: &Metadata) -> Option<Arc<dyn Proxy>> {
-        let alive_udp: Vec<_> = self
-            .proxies
-            .iter()
-            .filter(|p| p.alive() && p.support_udp())
-            .cloned()
-            .collect();
-        if alive_udp.is_empty() {
-            return None;
-        }
-        let idx = match self.strategy {
+        match self.strategy {
             LbStrategy::RoundRobin => {
-                self.counter.fetch_add(1, Ordering::Relaxed) % alive_udp.len()
+                let alive_count = self
+                    .proxies
+                    .iter()
+                    .filter(|p| p.alive() && p.support_udp())
+                    .count();
+                if alive_count == 0 {
+                    return None;
+                }
+                let target_idx = self.counter.fetch_add(1, Ordering::Relaxed) % alive_count;
+                self.proxies
+                    .iter()
+                    .filter(|p| p.alive() && p.support_udp())
+                    .nth(target_idx)
+                    .cloned()
             }
             LbStrategy::ConsistentHashing => {
-                let hash = fnv1a(&src_ip_bytes(metadata));
-                (hash as usize) % alive_udp.len()
+                let alive_count = self
+                    .proxies
+                    .iter()
+                    .filter(|p| p.alive() && p.support_udp())
+                    .count();
+                if alive_count == 0 {
+                    return None;
+                }
+                let (bytes, len) = src_ip_bytes(metadata);
+                let hash = fnv1a(&bytes[..len]);
+                let target_idx = (hash as usize) % alive_count;
+                self.proxies
+                    .iter()
+                    .filter(|p| p.alive() && p.support_udp())
+                    .nth(target_idx)
+                    .cloned()
             }
-        };
-        Some(Arc::clone(&alive_udp[idx]))
+        }
     }
 }
 
@@ -86,11 +114,19 @@ impl LoadBalanceGroup {
 /// `None` (no src_addr, e.g. local probe) → 4 zero bytes (0.0.0.0 fallback).
 /// Every connection without a src_addr hashes to the same proxy — deterministic,
 /// not random. Upstream: undefined (assumes src always present).
-fn src_ip_bytes(metadata: &Metadata) -> Vec<u8> {
+fn src_ip_bytes(metadata: &Metadata) -> ([u8; 16], usize) {
+    let mut buf = [0u8; 16];
     match metadata.src_ip {
-        Some(IpAddr::V4(v4)) => v4.octets().to_vec(),
-        Some(IpAddr::V6(v6)) => v6.octets().to_vec(),
-        None => vec![0u8; 4],
+        Some(IpAddr::V4(v4)) => {
+            let octets = v4.octets();
+            buf[..4].copy_from_slice(&octets);
+            (buf, 4)
+        }
+        Some(IpAddr::V6(v6)) => {
+            buf.copy_from_slice(&v6.octets());
+            (buf, 16)
+        }
+        None => (buf, 4),
     }
 }
 
@@ -130,14 +166,14 @@ impl ProxyAdapter for LoadBalanceGroup {
     }
 
     async fn dial_tcp(&self, metadata: &Metadata) -> Result<Box<dyn ProxyConn>> {
-        let proxy = self.select(metadata).ok_or(MihomoError::NoProxyAvailable)?;
+        let proxy = self.select(metadata).ok_or(MeowError::NoProxyAvailable)?;
         proxy.dial_tcp(metadata).await
     }
 
     async fn dial_udp(&self, metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
         let proxy = self
             .select_udp(metadata)
-            .ok_or(MihomoError::NoProxyAvailable)?;
+            .ok_or(MeowError::NoProxyAvailable)?;
         proxy.dial_udp(metadata).await
     }
 
@@ -203,7 +239,7 @@ impl Proxy for LoadBalanceGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mihomo_common::{ConnType, DnsMode, Network, ProxyHealth};
+    use meow_common::{ConnType, DnsMode, Network, ProxyHealth};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -256,11 +292,11 @@ mod tests {
         }
         async fn dial_tcp(&self, _m: &Metadata) -> Result<Box<dyn ProxyConn>> {
             self.dial_count.fetch_add(1, Ordering::Relaxed);
-            Err(MihomoError::NotSupported("mock".into()))
+            Err(MeowError::NotSupported("mock".into()))
         }
         async fn dial_udp(&self, _m: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
             self.dial_count.fetch_add(1, Ordering::Relaxed);
-            Err(MihomoError::NotSupported("mock udp".into()))
+            Err(MeowError::NotSupported("mock udp".into()))
         }
         fn health(&self) -> &ProxyHealth {
             &self.health
@@ -646,7 +682,7 @@ mod tests {
         let group = make_rr(proxies);
         let result = group.dial_udp(&meta_no_src()).await;
         assert!(
-            matches!(result, Err(MihomoError::NoProxyAvailable)),
+            matches!(result, Err(MeowError::NoProxyAvailable)),
             "expected NoProxyAvailable, got: {:?}",
             result.err()
         );

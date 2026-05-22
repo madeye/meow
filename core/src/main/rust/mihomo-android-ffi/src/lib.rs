@@ -1,14 +1,14 @@
 //! Rust half of the meow-android native stack — JNI surface for the Kotlin
 //! VPN service.
 //!
-//! Embeds the mihomo-rust v0.7.3 proxy engine (with a local fork of
-//! `mihomo-proxy` carrying the `set_pre_connect_hook` patch) and the
+//! Embeds the meow-rs proxy engine (pinned to a HEAD revision, with a local fork of
+//! `meow-proxy` carrying the `set_pre_connect_hook` patch) and the
 //! tun2socks layer in one cdylib. Every netstack TCP flow is dispatched
-//! in-process via `mihomo_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
+//! in-process via `meow_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
 //! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
 //! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
 //! `engine::strip_and_inject`; the tun2socks UDP/53 intercept hands every
-//! in-TUN DNS datagram straight to `mihomo_dns::DnsServer::handle_query`
+//! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`
 //! (A/AAAA) or forwards verbatim to the pinned upstreams (anything else).
 //! Mirrors meow-ios.
 
@@ -23,10 +23,10 @@ use dashmap::DashMap;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
-use mihomo_api::log_stream::{LogBroadcastLayer, LogMessage};
-use mihomo_api::ApiServer;
-use mihomo_dns::DnsServer;
-use mihomo_tunnel::Tunnel;
+use meow_api::log_stream::{LogBroadcastLayer, LogMessage};
+use meow_api::ApiServer;
+use meow_dns::DnsServer;
+use meow_tunnel::Tunnel;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::{Arc, Once, OnceLock};
@@ -170,12 +170,12 @@ async fn start_engine_async(
     logging::bridge_log("start_engine_async: initializing rustls");
     let _ = rustls::crypto::ring::default_provider().install_default();
     install_tracing_subscriber();
-    // Install our `protect()`-aware socket factory so mihomo-dns's internal
+    // Install our `protect()`-aware socket factory so meow-dns's internal
     // UDP/TCP nameserver queries bypass the VPN TUN. Idempotent across
     // engine restarts.
     dns_factory::install();
 
-    // Resolve config path + set XDG_CONFIG_HOME (mihomo-config looks for
+    // Resolve config path + set XDG_CONFIG_HOME (meow-config looks for
     // $XDG_CONFIG_HOME/mihomo/Country.mmdb). Our dir is .../no_backup/mihomo,
     // so XDG_CONFIG_HOME is the parent.
     let config_path = if let Some(dir) = HOME_DIR.lock().as_ref() {
@@ -203,7 +203,7 @@ async fn start_engine_async(
         _ => {
             logging::bridge_log("start_engine_async: using minimal config");
             let stripped = engine::strip_and_inject(MINIMAL_CONFIG)?;
-            mihomo_config::load_config_from_str(&stripped).await?
+            meow_config::load_config_from_str(&stripped).await?
         }
     };
     logging::bridge_log(&format!(
@@ -227,7 +227,7 @@ async fn start_engine_async(
 
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    // mihomo-rust v0.6.0 ApiServer::new grew from 5 → 9 params for the new
+    // meow-rs v0.6.0 ApiServer::new grew from 5 → 9 params for the new
     // /providers/*, /rules, /listeners and /logs routes. Build the required
     // shapes from the loaded Config.
     let proxy_providers = {
@@ -242,7 +242,7 @@ async fn start_engine_async(
 
     // Spawn mihomo's DnsServer on the loopback address pinned by
     // `engine::pinned_dns_block` (127.0.0.1:1053). tun2socks dispatches
-    // every in-TUN UDP/53 datagram through `mihomo_tunnel::udp::handle_udp`
+    // every in-TUN UDP/53 datagram through `meow_tunnel::udp::handle_udp`
     // with its destination rewritten to this address — DNS rides the same
     // in-process tunnel path as application UDP traffic.
     if let Some(addr) = config.dns.listen_addr {
@@ -275,7 +275,7 @@ async fn start_engine_async(
     }
 
     // No SOCKS5 / HTTP loopback listener — tun2socks dispatches every flow
-    // through `mihomo_tunnel::tcp::handle_tcp` in-process (same path as
+    // through `meow_tunnel::tcp::handle_tcp` in-process (same path as
     // meow-ios). The `listeners.*` block in user configs is intentionally
     // ignored on Android.
 
@@ -368,8 +368,8 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun
     // Store VpnService reference for socket protection
     protect::set_vpn_service(&env, &vpn_service);
 
-    // Register the protect hook in the patched mihomo-proxy
-    mihomo_proxy::set_pre_connect_hook(protect::protect_fd);
+    // Register the protect hook in the patched meow-proxy
+    meow_proxy::set_pre_connect_hook(protect::protect_fd);
 
     match tun2socks::start(fd, dns_port as u16) {
         Ok(()) => {
@@ -427,7 +427,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeValidate
     yaml: JString,
 ) -> jint {
     let yaml_str: String = env.get_string(&yaml).map(|s| s.into()).unwrap_or_default();
-    match get_runtime().block_on(mihomo_config::load_config_from_str(&yaml_str)) {
+    match get_runtime().block_on(meow_config::load_config_from_str(&yaml_str)) {
         Ok(_) => 0,
         Err(e) => {
             set_error(format!("validate config: {}", e));
@@ -452,7 +452,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("mihomo-rust 0.7.3")
+    env.new_string("meow-rs 0a7d702")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
 }

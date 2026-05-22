@@ -1,6 +1,6 @@
 //! Transport-layer chain builder for proxy adapters.
 //!
-//! `TransportChain` applies a sequence of [`mihomo_transport::Transport`] layers
+//! `TransportChain` applies a sequence of [`meow_transport::Transport`] layers
 //! to a raw TCP stream. Layers are applied left-to-right (TLS wraps TCP first;
 //! WS wraps TLS+TCP second).
 //!
@@ -16,8 +16,8 @@
 //!
 //! TODO: deduplicate with vmess::transport_chain once M1.B-1 lands (VMess PR).
 
-use mihomo_common::{MihomoError, Result};
-use mihomo_transport::{Stream, Transport};
+use meow_common::{MeowError, Result};
+use meow_transport::{Stream, Transport};
 
 /// An ordered sequence of transport layers applied to a TCP stream.
 ///
@@ -52,7 +52,7 @@ impl TransportChain {
             stream = layer
                 .connect(stream)
                 .await
-                .map_err(|e| MihomoError::Proxy(e.to_string()))?;
+                .map_err(|e| MeowError::Proxy(e.to_string()))?;
         }
         Ok(stream)
     }

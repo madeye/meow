@@ -1,4 +1,4 @@
-//! Pluggable `mihomo_dns::client::SocketFactory` that protects every DNS
+//! Pluggable `meow_dns::client::SocketFactory` that protects every DNS
 //! socket the resolver opens via `VpnService.protect(fd)` before it's bound
 //! or connected. The meow app does NOT exclude itself from VPN routing via
 //! `addDisallowedApplication`, so without this protection the resolver's
@@ -8,7 +8,7 @@
 //! Mihomo v0.7.4+ exposes `set_socket_factory` exactly for this hook.
 
 use crate::protect::protect_fd;
-use mihomo_dns::client::{set_socket_factory, SocketFactory};
+use meow_dns::client::{set_socket_factory, SocketFactory};
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;

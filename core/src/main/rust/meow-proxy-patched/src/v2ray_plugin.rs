@@ -3,28 +3,28 @@
 //! Implements the WebSocket (and optional TLS) transport used by the
 //! `v2ray-plugin` SIP003 plugin for Shadowsocks, natively in Rust.
 //!
-//! TLS is provided by `mihomo_transport::tls::TlsLayer`; WebSocket by
-//! `mihomo_transport::ws::WsLayer`.  Protocol logic (SIP003 option parsing,
+//! TLS is provided by `meow_transport::tls::TlsLayer`; WebSocket by
+//! `meow_transport::ws::WsLayer`.  Protocol logic (SIP003 option parsing,
 //! `mux` pass-through) remains here unchanged.
 //!
 //! Entry points:
 //! - [`parse_opts`] converts a SIP003 `k=v;k=v` opts string into a
 //!   [`V2rayPluginConfig`].
 //! - [`dial`] opens a TCP (optionally TLS) + WebSocket stream to the server
-//!   and returns a `Box<dyn mihomo_transport::Stream>` that callers layer
+//!   and returns a `Box<dyn meow_transport::Stream>` that callers layer
 //!   Shadowsocks encryption on top of via `ProxyClientStream::from_stream`.
 
 use std::collections::HashMap;
 
-use crate::connect::protected_tcp_connect;
-use mihomo_common::{MihomoError, Result};
-use mihomo_transport::{
+use meow_common::{MeowError, Result};
+use meow_transport::{
     tls::{TlsConfig, TlsLayer},
     ws::{WsConfig, WsLayer},
     Transport,
 };
 use tracing::{debug, warn};
 
+use crate::connect::protected_tcp_connect;
 use crate::transport_to_proxy_err;
 
 /// Transport mode.  Only WebSocket is supported.
@@ -90,7 +90,7 @@ pub fn parse_opts(s: &str) -> Result<V2rayPluginConfig> {
                 if value.eq_ignore_ascii_case("websocket") || value.eq_ignore_ascii_case("ws") {
                     cfg.mode = Mode::Websocket;
                 } else {
-                    return Err(MihomoError::Config(format!(
+                    return Err(MeowError::Config(format!(
                         "v2ray-plugin: unsupported mode '{value}' (only 'websocket' is supported)"
                     )));
                 }
@@ -124,7 +124,7 @@ pub async fn dial(
     cfg: &V2rayPluginConfig,
     server_host: &str,
     server_port: u16,
-) -> Result<Box<dyn mihomo_transport::Stream>> {
+) -> Result<Box<dyn meow_transport::Stream>> {
     let host_header = if cfg.host.is_empty() {
         server_host.to_string()
     } else {
@@ -140,10 +140,10 @@ pub async fn dial(
     // outbound socket is protected via VpnService.protect(fd) before connect.
     let tcp = protected_tcp_connect(&format!("{}:{}", server_host, server_port))
         .await
-        .map_err(MihomoError::Io)?;
+        .map_err(MeowError::Io)?;
 
     // 2) Optional TLS handshake via TlsLayer.
-    let stream: Box<dyn mihomo_transport::Stream> = if cfg.tls {
+    let stream: Box<dyn meow_transport::Stream> = if cfg.tls {
         let tls_config = TlsConfig {
             skip_cert_verify: cfg.skip_cert_verify,
             ..TlsConfig::new(host_header.clone())

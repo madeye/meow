@@ -30,7 +30,7 @@ use std::ops::RangeInclusive;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use mihomo_common::ProxyConn;
+use meow_common::ProxyConn;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::conn::VlessConn;

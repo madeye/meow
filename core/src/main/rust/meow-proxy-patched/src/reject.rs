@@ -1,7 +1,6 @@
 use async_trait::async_trait;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
 use std::net::SocketAddr;
 
@@ -63,7 +62,7 @@ struct RejectPacketConn;
 #[async_trait]
 impl ProxyPacketConn for RejectPacketConn {
     async fn read_packet(&self, _buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        Err(MihomoError::Proxy("rejected".into()))
+        Err(MeowError::Proxy("rejected".into()))
     }
 
     async fn write_packet(&self, buf: &[u8], _addr: &SocketAddr) -> Result<usize> {
@@ -71,7 +70,7 @@ impl ProxyPacketConn for RejectPacketConn {
     }
 
     fn local_addr(&self) -> Result<SocketAddr> {
-        Err(MihomoError::Proxy("rejected".into()))
+        Err(MeowError::Proxy("rejected".into()))
     }
 
     fn close(&self) -> Result<()> {
@@ -127,7 +126,7 @@ impl ProxyAdapter for RejectAdapter {
         _stream: Box<dyn ProxyConn>,
         _metadata: &Metadata,
     ) -> Result<Box<dyn ProxyConn>> {
-        Err(MihomoError::Proxy("rejected".into()))
+        Err(MeowError::Proxy("rejected".into()))
     }
 
     fn health(&self) -> &ProxyHealth {

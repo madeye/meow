@@ -36,7 +36,7 @@ class MihomoInstance(val profile: ClashProfile) {
     }
 
     private fun copyGeoxAssets(context: android.content.Context, configDir: File) {
-        // Map: asset name -> target name (mihomo-rust expects Country.mmdb with capital C)
+        // Map: asset name -> target name (meow-rs expects Country.mmdb with capital C)
         val files = listOf(
             "geoip.metadb" to "geoip.metadb",
             "geosite.dat" to "geosite.dat",

@@ -31,7 +31,7 @@
 // upstream SHA: xray-core/xray-core (2024) — pin on first Vision integration
 
 use bytes::{BufMut, BytesMut};
-use mihomo_common::{Metadata, MihomoError, Result};
+use meow_common::{MeowError, Metadata, Result};
 use tokio::io::AsyncReadExt;
 
 // ─── Address type ─────────────────────────────────────────────────────────────
@@ -162,11 +162,11 @@ where
     let mut hdr = [0u8; 2]; // version + addon_length
     stream.read_exact(&mut hdr).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            MihomoError::Proxy(
+            MeowError::Proxy(
                 "vless: server closed after header — check UUID and server config".into(),
             )
         } else {
-            MihomoError::Io(e)
+            MeowError::Io(e)
         }
     })?;
 
@@ -182,7 +182,7 @@ where
             "vless: response version mismatch (expected 0x00) — \
              check UUID and whether a TLS layer is required"
         );
-        return Err(MihomoError::Proxy(format!(
+        return Err(MeowError::Proxy(format!(
             "vless: version mismatch: expected 0x00, got {version:#04x}"
         )));
     }
@@ -192,7 +192,7 @@ where
         stream
             .read_exact(&mut discard)
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
     }
 
     Ok(())

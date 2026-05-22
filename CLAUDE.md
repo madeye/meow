@@ -60,7 +60,7 @@ Flutter (Dart)                    MethodChannel("io.github.madeye.meow/vpn")
     ↕                             EventChannel("io.github.madeye.meow/vpn_state")
 Kotlin (Android)                  EventChannel("io.github.madeye.meow/traffic")
     ↕ JNI
-Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + mihomo-rust engine
+Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 ```
 
 ### Rust FFI (`core/src/main/rust/mihomo-android-ffi/`)

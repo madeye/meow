@@ -20,15 +20,14 @@
 //!
 //! upstream: `adapter/outbound/http.go`
 
-use crate::connect::protected_tcp_connect;
 use async_trait::async_trait;
 use base64::Engine as _;
-use mihomo_common::{
-    AdapterType, Metadata, MihomoError, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn,
-    Result,
+use meow_common::{
+    AdapterType, MeowError, Metadata, ProxyAdapter, ProxyConn, ProxyHealth, ProxyPacketConn, Result,
 };
 use std::fmt::Write as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use crate::connect::protected_tcp_connect;
 #[cfg(test)]
 use tokio::net::TcpStream;
 use tracing::debug;
@@ -83,27 +82,26 @@ impl HttpAdapter {
     }
 
     /// Dial TCP to the proxy server, optionally wrapping in TLS.
-    async fn dial_stream(&self) -> Result<Box<dyn mihomo_transport::Stream>> {
+    async fn dial_stream(&self) -> Result<Box<dyn meow_transport::Stream>> {
         // Android: route through the global pre-connect hook so the outbound
         // socket is protected via VpnService.protect(fd) before connect.
         let tcp = protected_tcp_connect(&format!("{}:{}", self.server, self.port))
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         if self.tls {
-            use mihomo_transport::tls::{TlsConfig, TlsLayer};
-            use mihomo_transport::Transport;
+            use meow_transport::tls::{TlsConfig, TlsLayer};
+            use meow_transport::Transport;
 
             let tls_cfg = TlsConfig {
                 skip_cert_verify: self.skip_cert_verify,
                 ..TlsConfig::new(&self.server)
             };
-            let tls_layer =
-                TlsLayer::new(&tls_cfg).map_err(|e| MihomoError::Proxy(e.to_string()))?;
+            let tls_layer = TlsLayer::new(&tls_cfg).map_err(|e| MeowError::Proxy(e.to_string()))?;
             tls_layer
                 .connect(Box::new(tcp))
                 .await
-                .map_err(|e| MihomoError::Proxy(e.to_string()))
+                .map_err(|e| MeowError::Proxy(e.to_string()))
         } else {
             Ok(Box::new(tcp))
         }
@@ -112,7 +110,7 @@ impl HttpAdapter {
     /// Run the HTTP CONNECT handshake over `stream`.
     ///
     /// On success the stream is ready for tunnelled application data.
-    /// On failure returns the appropriate `MihomoError` variant.
+    /// On failure returns the appropriate `MeowError` variant.
     async fn run_connect<S>(&self, stream: &mut S, target: &str) -> Result<()>
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -133,20 +131,20 @@ impl HttpAdapter {
         stream
             .write_all(req.as_bytes())
             .await
-            .map_err(MihomoError::Io)?;
+            .map_err(MeowError::Io)?;
 
         // ── Read status line ─────────────────────────────────────────────────
         let status_line = read_line(stream).await?;
         let status_str = std::str::from_utf8(&status_line)
-            .map_err(|_| MihomoError::Proxy("http proxy: non-UTF-8 status line".into()))?
+            .map_err(|_| MeowError::Proxy("http proxy: non-UTF-8 status line".into()))?
             .trim_end_matches(['\r', '\n']);
 
         let status_code = parse_http_status(status_str)?;
 
         match status_code {
             200..=299 => {}
-            407 => return Err(MihomoError::ProxyAuthFailed),
-            code => return Err(MihomoError::HttpConnectFailed(code)),
+            407 => return Err(MeowError::ProxyAuthFailed),
+            code => return Err(MeowError::HttpConnectFailed(code)),
         }
 
         // ── Drain response headers ───────────────────────────────────────────
@@ -165,7 +163,7 @@ impl HttpAdapter {
             }
             header_count += 1;
             if header_count > MAX_RESPONSE_HEADERS {
-                return Err(MihomoError::Proxy(format!(
+                return Err(MeowError::Proxy(format!(
                     "http proxy: response has more than {MAX_RESPONSE_HEADERS} headers"
                 )));
             }
@@ -208,7 +206,7 @@ impl ProxyAdapter for HttpAdapter {
     }
 
     async fn dial_udp(&self, _metadata: &Metadata) -> Result<Box<dyn ProxyPacketConn>> {
-        Err(MihomoError::NotSupported(
+        Err(MeowError::NotSupported(
             "http proxy: UDP not supported (HTTP CONNECT is TCP-only)".into(),
         ))
     }
@@ -260,14 +258,14 @@ fn parse_http_status(line: &str) -> Result<u16> {
     let mut parts = line.splitn(3, ' ');
     let version = parts.next().unwrap_or("");
     if !version.starts_with("HTTP/") {
-        return Err(MihomoError::Proxy(format!(
+        return Err(MeowError::Proxy(format!(
             "http proxy: unexpected response line: {line:?}"
         )));
     }
     let code_str = parts.next().unwrap_or("");
     code_str
         .parse::<u16>()
-        .map_err(|_| MihomoError::Proxy(format!("http proxy: invalid status code: {code_str:?}")))
+        .map_err(|_| MeowError::Proxy(format!("http proxy: invalid status code: {code_str:?}")))
 }
 
 /// Read one `\r\n`-terminated line from an async reader.
@@ -279,16 +277,13 @@ async fn read_line<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> Result<Ve
     let mut line = Vec::with_capacity(64);
     let mut byte = [0u8; 1];
     loop {
-        reader
-            .read_exact(&mut byte)
-            .await
-            .map_err(MihomoError::Io)?;
+        reader.read_exact(&mut byte).await.map_err(MeowError::Io)?;
         line.push(byte[0]);
         if line.ends_with(b"\r\n") {
             return Ok(line);
         }
         if line.len() > 8192 {
-            return Err(MihomoError::Proxy(
+            return Err(MeowError::Proxy(
                 "http proxy: response header line too long (> 8 KiB)".into(),
             ));
         }
@@ -434,7 +429,7 @@ mod tests {
         let meta = make_metadata("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::ProxyAuthFailed),
+            matches!(err, MeowError::ProxyAuthFailed),
             "407 must map to ProxyAuthFailed; got {err:?}"
         );
     }
@@ -449,7 +444,7 @@ mod tests {
         let meta = make_metadata("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::HttpConnectFailed(503)),
+            matches!(err, MeowError::HttpConnectFailed(503)),
             "503 must map to HttpConnectFailed(503); got {err:?}"
         );
     }
@@ -546,7 +541,7 @@ mod tests {
         let meta = make_metadata("example.com", 443);
         let err = adapter.dial_tcp(&meta).await.err().expect("expected Err");
         assert!(
-            matches!(err, MihomoError::Proxy(ref msg) if msg.contains("more than 100 headers")),
+            matches!(err, MeowError::Proxy(ref msg) if msg.contains("more than 100 headers")),
             "101 response headers must trigger the cap error; got {err:?}"
         );
     }

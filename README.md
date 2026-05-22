@@ -2,7 +2,7 @@
 
 ![Feature Graphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
-A Clash/mihomo Android client with Flutter UI, powered by [mihomo-rust](https://github.com/madeye/mihomo-rust) and netstack-smoltcp tun2socks.
+A Clash/mihomo Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and netstack-smoltcp tun2socks.
 
 An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
 
@@ -26,7 +26,7 @@ Rust FFI (libmihomo_android_ffi.so)
     |  netstack-smoltcp tun2socks
     |  Per-socket VpnService.protect() via JNI
     v
-mihomo-rust (Cargo dependency)
+meow-rs (Cargo dependency)
     |  Tunnel, Config, Proxy, API
     v
 Network
