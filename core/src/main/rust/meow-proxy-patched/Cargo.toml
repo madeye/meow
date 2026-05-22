@@ -10,13 +10,14 @@ ss = ["dep:shadowsocks"]
 trojan = []
 vless = []
 vless-vision = ["vless"]
-# Upstream-defined feature flags. Not built here — the optional adapters
-# (anytls-rs, quinn, ECH rustls) pull non-trivial deps we don't need on
-# Android. Declared so the corresponding `#[cfg(feature = ...)]` blocks
-# inherited from upstream don't trip "unexpected cfg value" warnings.
-anytls = []
+anytls = ["dep:anytls-rs"]
+ech-tls-tunnel = ["ss", "meow-transport/ech"]
+# Declared so upstream's `#[cfg(feature = "hysteria2")]` blocks don't trip
+# "unexpected cfg value" warnings. Not wired to `dep:quinn`: upstream marks
+# the implementation as an incomplete tracer-bullet (no working H3 auth /
+# data framing), so enabling it would only add ~1 MB of quinn for no
+# functional gain. Revisit once upstream lands the data plane.
 hysteria2 = []
-ech-tls-tunnel = []
 
 [dependencies]
 meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
@@ -24,6 +25,7 @@ meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c0
 meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
 tokio = { version = "1", features = ["full"] }
 shadowsocks = { version = "1.21", features = ["aead-cipher-2022", "stream-cipher"], optional = true }
+anytls-rs = { version = "0.5", optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 webpki-roots = "0.26"

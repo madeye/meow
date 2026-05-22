@@ -20,10 +20,16 @@ missing_const_for_thread_local = "allow"
 [dependencies]
 # Embedded meow-rs engine. Pinned to current HEAD (0a7d702).
 meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+# Enable extra outbound protocols (anytls, ech-tls-tunnel) and transport
+# layers (ech, grpc, h2, httpupgrade) on top of the default
+# ss/trojan/vless/vless-vision + tls/ws set for parity with upstream
+# mihomo. hysteria2 + boring-tls intentionally omitted (incomplete /
+# heavy native toolchain).
+meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3", features = ["anytls", "ech-tls-tunnel"] }
 meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
 meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
 meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
 # Local fork of meow-proxy with the Android `set_pre_connect_hook` patch.
 meow-proxy = { path = "../meow-proxy-patched" }
 
