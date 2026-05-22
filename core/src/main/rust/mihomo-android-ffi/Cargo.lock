@@ -561,15 +561,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
-name = "crossbeam-channel"
-version = "0.5.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-deque"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -777,18 +768,6 @@ name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
-
-[[package]]
-name = "enum-as-inner"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e6a265c649f3f5979b601d26f1d05ada116434c87741c9493cb56218f76cbc"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "env_filter"
@@ -1112,31 +1091,6 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hickory-proto"
-version = "0.25.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8a6fe56c0038198998a6f217ca4e7ef3a5e51f46163bd6dd60b5c71ca6c6502"
-dependencies = [
- "async-trait",
- "cfg-if",
- "data-encoding",
- "enum-as-inner",
- "futures-channel",
- "futures-io",
- "futures-util",
- "idna",
- "ipnet",
- "once_cell",
- "rand 0.9.4",
- "ring",
- "thiserror 2.0.18",
- "tinyvec",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "hickory-proto"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bab31817bfb44672a252e97fe81cd0c18d1b2cf892108922f6818820df8c643"
@@ -1152,27 +1106,6 @@ dependencies = [
  "tinyvec",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "hickory-resolver"
-version = "0.25.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc62a9a99b0bfb44d2ab95a7208ac952d31060efc16241c87eaf36406fecf87a"
-dependencies = [
- "cfg-if",
- "futures-util",
- "hickory-proto 0.25.2",
- "ipconfig",
- "moka",
- "once_cell",
- "parking_lot",
- "rand 0.9.4",
- "resolv-conf",
- "smallvec",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1310,7 +1243,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -1470,19 +1403,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "ipconfig"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d40460c0ce33d6ce4b0630ad68ff63d6661961c48b6dba35e5a4d81cfb48222"
-dependencies = [
- "socket2 0.6.3",
- "widestring",
- "windows-registry",
- "windows-result 0.4.1",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1786,7 +1706,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 [[package]]
 name = "meow-api"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "axum",
  "base64",
@@ -1818,7 +1738,7 @@ dependencies = [
 [[package]]
 name = "meow-common"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1830,6 +1750,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol_str",
+ "socket2 0.5.10",
  "subtle",
  "thiserror 2.0.18",
  "tokio",
@@ -1839,12 +1760,12 @@ dependencies = [
 [[package]]
 name = "meow-config"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
- "hickory-proto 0.26.1",
+ "hickory-proto",
  "httparse",
  "ipnet",
  "libc",
@@ -1872,11 +1793,11 @@ dependencies = [
 [[package]]
 name = "meow-dns"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "dashmap",
  "futures",
- "hickory-proto 0.26.1",
+ "hickory-proto",
  "ipnet",
  "lru",
  "maxminddb",
@@ -1897,36 +1818,28 @@ dependencies = [
 
 [[package]]
 name = "meow-proxy"
-version = "0.6.0"
+version = "0.7.6"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
- "anyhow",
  "anytls-rs",
  "async-trait",
  "base64",
  "bytes",
- "dashmap",
  "futures",
- "futures-util",
  "hex",
- "http",
  "libc",
  "meow-common",
  "meow-dns",
  "meow-transport",
  "parking_lot",
  "rand 0.9.4",
- "regex",
- "reqwest",
  "rustls",
- "serde",
  "serde_json",
  "sha2",
  "shadowsocks",
  "socket2 0.5.10",
- "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
- "tokio-tungstenite 0.24.0",
  "tracing",
  "webpki-roots 0.26.11",
 ]
@@ -1934,7 +1847,7 @@ dependencies = [
 [[package]]
 name = "meow-rules"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "ipnet",
  "iprange",
@@ -1950,7 +1863,7 @@ dependencies = [
 [[package]]
 name = "meow-transport"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "async-trait",
  "base64",
@@ -1972,7 +1885,7 @@ dependencies = [
 [[package]]
 name = "meow-trie"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "smallvec",
 ]
@@ -1980,7 +1893,7 @@ dependencies = [
 [[package]]
 name = "meow-tunnel"
 version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=0a7d702eba1c05dbedc391a776ce99121be8cec3#0a7d702eba1c05dbedc391a776ce99121be8cec3"
+source = "git+https://github.com/madeye/meow-rs.git?rev=238a064df8861b26435d7cda1e1bb63aa3595b05#238a064df8861b26435d7cda1e1bb63aa3595b05"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2065,23 +1978,6 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "moka"
-version = "0.12.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957228ad12042ee839f93c8f257b62b4c0ab5eaae1d4fa60de53b27c9d7c5046"
-dependencies = [
- "crossbeam-channel",
- "crossbeam-epoch",
- "crossbeam-utils",
- "equivalent",
- "parking_lot",
- "portable-atomic",
- "smallvec",
- "tagptr",
- "uuid",
 ]
 
 [[package]]
@@ -2696,12 +2592,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "resolv-conf"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e061d1b48cb8d38042de4ae0a7a6401009d6143dc80d2e2d6f31f0bdd6470c7"
-
-[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2961,7 +2851,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "482831bf9d55acf3c98e211b6c852c3dfdf1d1b0d23fdf1d887c5a4b2acad4e4"
 dependencies = [
  "aes",
- "arc-swap",
  "base64",
  "blake3",
  "byte_string",
@@ -2969,11 +2858,9 @@ dependencies = [
  "cfg-if",
  "dynosaur",
  "futures",
- "hickory-resolver",
  "libc",
  "log",
  "lru_time_cache",
- "notify",
  "percent-encoding",
  "pin-project",
  "rand 0.9.4",
@@ -3206,12 +3093,6 @@ dependencies = [
  "rayon",
  "windows",
 ]
-
-[[package]]
-name = "tagptr"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "thiserror"
@@ -3841,12 +3722,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "widestring"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
-
-[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3883,7 +3758,7 @@ version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12342cb4d8e3b046f3d80effd474a7a02447231330ef77d71daa6fbc40681143"
 dependencies = [
- "windows-core",
+ "windows-core 0.57.0",
  "windows-targets 0.52.6",
 ]
 
@@ -3893,10 +3768,23 @@ version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2ed2439a290666cd67ecce2b0ffaad89c2a56b976b736e6ece670297897832d"
 dependencies = [
- "windows-implement",
- "windows-interface",
+ "windows-implement 0.57.0",
+ "windows-interface 0.57.0",
  "windows-result 0.1.2",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-core"
+version = "0.62.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
+dependencies = [
+ "windows-implement 0.60.2",
+ "windows-interface 0.59.3",
+ "windows-link",
+ "windows-result 0.4.1",
+ "windows-strings",
 ]
 
 [[package]]
@@ -3904,6 +3792,17 @@ name = "windows-implement"
 version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.60.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3922,21 +3821,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "windows-interface"
+version = "0.59.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
-
-[[package]]
-name = "windows-registry"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
-dependencies = [
- "windows-link",
- "windows-result 0.4.1",
- "windows-strings",
-]
 
 [[package]]
 name = "windows-result"

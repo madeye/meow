@@ -18,20 +18,21 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-# Embedded meow-rs engine. Pinned to current HEAD (0a7d702).
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
+# Embedded meow-rs engine. Pinned to current HEAD (238a064 — adds
+# meow_common::SocketProtector hook so we no longer need to patch
+# meow-proxy ourselves).
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
 # Enable extra outbound protocols (anytls, ech-tls-tunnel) and transport
 # layers (ech, grpc, h2, httpupgrade) on top of the default
 # ss/trojan/vless/vless-vision + tls/ws set for parity with upstream
 # mihomo. hysteria2 + boring-tls intentionally omitted (incomplete /
 # heavy native toolchain).
-meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "0a7d702eba1c05dbedc391a776ce99121be8cec3", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-# Local fork of meow-proxy with the Android `set_pre_connect_hook` patch.
-meow-proxy = { path = "../meow-proxy-patched" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["anytls", "ech-tls-tunnel"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
@@ -84,6 +85,3 @@ jni = "0.21"
 # than the platform malloc and avoids fragmentation under the VPN service's
 # tight memory budget.
 mimalloc = { version = "0.1", default-features = false }
-
-[patch."https://github.com/madeye/meow-rs.git"]
-meow-proxy = { path = "../meow-proxy-patched" }

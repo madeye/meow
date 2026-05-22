@@ -88,7 +88,6 @@ core/                           Android library module
   src/main/java/                Kotlin: VPN service, AIDL, Room DB
   src/main/rust/
     mihomo-android-ffi/         Rust FFI crate (JNI + tun2socks)
-    mihomo-proxy-patched/       Patched proxy adapters (socket protection)
 flutter_module/                 Flutter UI module
   lib/screens/                  Home, Subscriptions, Traffic, Settings
   lib/l10n/                     Localization (en, zh_CN)

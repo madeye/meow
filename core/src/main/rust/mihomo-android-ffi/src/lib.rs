@@ -1,9 +1,10 @@
 //! Rust half of the meow-android native stack — JNI surface for the Kotlin
 //! VPN service.
 //!
-//! Embeds the meow-rs proxy engine (pinned to a HEAD revision, with a local fork of
-//! `meow-proxy` carrying the `set_pre_connect_hook` patch) and the
-//! tun2socks layer in one cdylib. Every netstack TCP flow is dispatched
+//! Embeds the meow-rs proxy engine (pinned to a HEAD revision) and the
+//! tun2socks layer in one cdylib. Outbound socket protection is wired
+//! through upstream's `meow_common::SocketProtector` hook — see
+//! `protect.rs` — so no proxy-side patches are needed. Every netstack TCP flow is dispatched
 //! in-process via `meow_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
 //! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
 //! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
@@ -13,7 +14,6 @@
 //! Mirrors meow-ios.
 
 mod diagnostics;
-mod dns_factory;
 mod engine;
 mod logging;
 mod protect;
@@ -170,10 +170,6 @@ async fn start_engine_async(
     logging::bridge_log("start_engine_async: initializing rustls");
     let _ = rustls::crypto::ring::default_provider().install_default();
     install_tracing_subscriber();
-    // Install our `protect()`-aware socket factory so meow-dns's internal
-    // UDP/TCP nameserver queries bypass the VPN TUN. Idempotent across
-    // engine restarts.
-    dns_factory::install();
 
     // Resolve config path + set XDG_CONFIG_HOME (meow-config looks for
     // $XDG_CONFIG_HOME/mihomo/Country.mmdb). Our dir is .../no_backup/mihomo,
@@ -338,7 +334,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStopEngi
     _class: JClass,
 ) {
     tun2socks::stop();
-    protect::clear_vpn_service();
+    protect::clear();
     let mut engine = ENGINE.lock();
     if let Some(state) = engine.take() {
         for handle in state._handles {
@@ -365,11 +361,10 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun
         return -1;
     }
 
-    // Store VpnService reference for socket protection
-    protect::set_vpn_service(&env, &vpn_service);
-
-    // Register the protect hook in the patched meow-proxy
-    meow_proxy::set_pre_connect_hook(protect::protect_fd);
+    // Install the global SocketProtector — every outbound TCP/UDP fd
+    // meow-rs opens (proxy adapters + the DNS resolver's default
+    // SocketFactory) will fire VpnService.protect() before connect/bind.
+    protect::install(&env, &vpn_service);
 
     match tun2socks::start(fd, dns_port as u16) {
         Ok(()) => {
@@ -452,7 +447,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("meow-rs 0a7d702")
+    env.new_string("meow-rs 238a064")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
 }
