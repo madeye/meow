@@ -447,7 +447,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("meow-rs 238a064")
+    env.new_string("meow-rs 8502a1d")
         .unwrap_or_else(|_| env.new_string("").unwrap())
         .into_raw()
 }

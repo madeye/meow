@@ -18,21 +18,21 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-# Embedded meow-rs engine. Pinned to current HEAD (238a064 — adds
+# Embedded meow-rs engine. Pinned to current HEAD (8502a1d — adds
 # meow_common::SocketProtector hook so we no longer need to patch
 # meow-proxy ourselves).
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781" }
 # Enable extra outbound protocols (anytls, ech-tls-tunnel) and transport
 # layers (ech, grpc, h2, httpupgrade) on top of the default
 # ss/trojan/vless/vless-vision + tls/ws set for parity with upstream
 # mihomo. hysteria2 + boring-tls intentionally omitted (incomplete /
 # heavy native toolchain).
-meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", rev = "238a064df8861b26435d7cda1e1bb63aa3595b05", features = ["anytls", "ech-tls-tunnel"] }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781", features = ["anytls", "ech-tls-tunnel"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", rev = "8502a1de676ec6280895d8d4fb7ee41920003781", features = ["anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
