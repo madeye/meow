@@ -57,30 +57,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final state = await _vpn.getState();
       final profile = await _vpn.getSelectedProfile();
-      // Source of truth for the node list:
-      //   1) When the engine is running, the live `/proxies` endpoint —
-      //      this includes nodes pulled in via `proxy-providers:` URLs that
-      //      aren't present in the raw subscription YAML.
-      //   2) Otherwise, parse the subscription YAML with the real YAML
-      //      parser (`ProxiesResult.fromYaml`); the regex-based
-      //      `Profile.proxyNames` only handled inline `proxies:` with a
-      //      narrow indent shape and missed many real-world subscriptions.
-      List<String> names = const [];
+      // Node list ordering:
+      //   1) YAML defines the canonical order (the user's subscription
+      //      lists proxies in a specific sequence — sort by region,
+      //      preferred nodes first, etc.). Always seed the list from
+      //      `ProxiesResult.fromYaml` first.
+      //   2) When the engine is running, also pull names from the live
+      //      `/proxies` endpoint — that surface includes proxy-provider
+      //      nodes that don't appear inline in the subscription YAML.
+      //      The endpoint's map iteration order is non-deterministic
+      //      (Go map), so we only use it to discover *additional* names
+      //      and append them after the YAML-ordered set.
+      final excluded = {'DIRECT', 'REJECT', 'COMPATIBLE'};
+      final names = <String>[];
+      final seen = <String>{};
+      if (profile != null) {
+        final fromYaml = ProxiesResult.fromYaml(profile.yamlContent);
+        for (final n in fromYaml.proxies.keys) {
+          if (excluded.contains(n) || !seen.add(n)) continue;
+          names.add(n);
+        }
+      }
       if (state == VpnState.connected) {
         try {
           final result = await MihomoApi.instance.getProxies();
-          names = result.proxies.keys
-              .where((n) => n != 'DIRECT' && n != 'REJECT' && n != 'COMPATIBLE')
-              .toList();
+          for (final n in result.proxies.keys) {
+            if (excluded.contains(n) || !seen.add(n)) continue;
+            names.add(n);
+          }
         } catch (_) {
-          // Fall through to YAML if the engine API is unreachable.
+          // Engine API unreachable — YAML-derived list already populated.
         }
-      }
-      if (names.isEmpty && profile != null) {
-        final fromYaml = ProxiesResult.fromYaml(profile.yamlContent);
-        names = fromYaml.proxies.keys
-            .where((n) => n != 'DIRECT' && n != 'REJECT' && n != 'COMPATIBLE')
-            .toList();
       }
       if (mounted) {
         setState(() {

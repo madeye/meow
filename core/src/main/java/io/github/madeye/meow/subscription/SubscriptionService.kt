@@ -12,6 +12,7 @@ object SubscriptionService {
         val connection = url.openConnection()
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
+        connection.setRequestProperty("User-Agent", "clash.meta/1.0")
         val yaml = connection.inputStream.bufferedReader().readText()
         profile.copy(yamlContent = yaml, yamlBackup = yaml, lastUpdated = System.currentTimeMillis())
     }

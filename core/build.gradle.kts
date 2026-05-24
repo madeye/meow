@@ -18,12 +18,22 @@ setupCore()
 val allAbis = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")
 val targetAbi = findProperty("TARGET_ABI")?.toString()
 
-// GeoX databases bundled as APK assets so MihomoInstance can seed them into
-// the engine's home dir without needing network on first start. Downloaded
-// at build time to keep multi-MB binaries out of git; cached under build/
-// and re-fetched only when missing. Wired via AGP's
-// `addGeneratedSourceDirectory` so every assets consumer (merge, lint,
-// package) picks up the dependency automatically.
+// GeoX databases bundled as APK assets. Seeded into the engine home dir
+// by MihomoInstance.copyGeoxAssets() on each start so the engine never
+// needs to reach the network for these — meow-rs's pre-VPN auto-fetch is
+// flaky on censored / metered links (github.com:443 can take 15s+ to
+// TCP-connect from CN cellular, with no timeout in the library path).
+//
+// Only the two meow-rs actually consumes are bundled: country.mmdb (the
+// GEOIP DB, required when any GEOIP rule fires) and GeoLite2-ASN.mmdb
+// (GEOIP-ASN rules). meow-rs requires geosite in `.mrs` format which
+// MetaCubeX does not publish as a release asset, so geosite is omitted —
+// any user config with GEOSITE rules will need to ship its own .mrs file.
+//
+// Downloaded at build time via jsdelivr CDN (more reliable than
+// github.com from CN) and cached under build/ to keep multi-MB binaries
+// out of git. Wired via AGP's `addGeneratedSourceDirectory` so every
+// assets consumer (merge, lint, package) picks up the dependency.
 abstract class DownloadGeoxAssets : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -32,15 +42,19 @@ abstract class DownloadGeoxAssets : DefaultTask() {
     fun run() {
         val base = "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release"
         val files = mapOf(
-            "geoip.metadb" to "$base/geoip.metadb",
-            "geosite.dat" to "$base/geosite.dat",
             "country.mmdb" to "$base/country.mmdb",
             "GeoLite2-ASN.mmdb" to "$base/GeoLite2-ASN.mmdb",
         )
-        // Files land in `<outputDir>/geox/` so MihomoInstance.kt's
-        // `assets.open("geox/$name")` continues to find them.
         val dir = outputDir.get().asFile.resolve("geox")
         dir.mkdirs()
+        // Prune stale files from a previous task run with a different
+        // `files` map, so they don't sneak into the APK as dead weight.
+        dir.listFiles()?.forEach { existing ->
+            if (existing.isFile && existing.name !in files) {
+                logger.lifecycle("downloadGeoxAssets: pruning stale ${existing.name}")
+                existing.delete()
+            }
+        }
         files.forEach { (name, url) ->
             val target = dir.resolve(name)
             if (target.exists() && target.length() > 0) return@forEach

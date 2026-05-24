@@ -14,8 +14,11 @@ class MihomoInstance(val profile: ClashProfile) {
     private var lastUpdate: Long = 0
 
     fun start(configDir: File, vpnService: android.net.VpnService) {
-        // Seed the mihomo home dir with bundled GeoX files so the engine
-        // doesn't have to download them on first start.
+        // Seed the engine home dir with bundled GeoX databases so meow-rs
+        // never has to reach the network on first start — the upstream
+        // pre-VPN fetch in meow-config goes via raw github.com which is
+        // unreliable on censored / metered links. APK assets are populated
+        // at build time by the `:core:downloadGeoxAssets` Gradle task.
         copyGeoxAssets(vpnService, configDir)
 
         val configFile = File(configDir, "config.yaml")
@@ -25,7 +28,6 @@ class MihomoInstance(val profile: ClashProfile) {
         // `engine::strip_and_inject` — see meow-ios for the same pattern.
         val yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
-            .let { injectGeoxUrl(it) }
         configFile.writeText(yaml)
         MihomoCore.nativeSetHomeDir(configDir.absolutePath)
         val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "")
@@ -35,11 +37,13 @@ class MihomoInstance(val profile: ClashProfile) {
         Timber.d("MihomoInstance: engine started")
     }
 
+    // Copy bundled GeoX databases from APK assets into the engine home dir.
+    // Skips files that already exist (cached from a prior start). Asset
+    // names follow the upstream release naming; targets follow meow-rs's
+    // discovery names (`Country.mmdb` with capital C, see
+    // meow_config::default_geoip_path).
     private fun copyGeoxAssets(context: android.content.Context, configDir: File) {
-        // Map: asset name -> target name (meow-rs expects Country.mmdb with capital C)
         val files = listOf(
-            "geoip.metadb" to "geoip.metadb",
-            "geosite.dat" to "geosite.dat",
             "country.mmdb" to "Country.mmdb",
             "GeoLite2-ASN.mmdb" to "GeoLite2-ASN.mmdb",
         )
@@ -48,28 +52,13 @@ class MihomoInstance(val profile: ClashProfile) {
             if (target.exists() && target.length() > 0) continue
             try {
                 context.assets.open("geox/$assetName").use { input ->
-                    target.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
+                    target.outputStream().use { output -> input.copyTo(output) }
                 }
                 Timber.d("MihomoInstance: seeded $targetName from assets (${target.length()} bytes)")
             } catch (e: Exception) {
                 Timber.w(e, "MihomoInstance: failed to seed $targetName from assets")
             }
         }
-    }
-
-    private fun injectGeoxUrl(yaml: String): String {
-        if (Regex("(?m)^geox-url:").containsMatchIn(yaml)) return yaml
-        val base = "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release"
-        val block = buildString {
-            appendLine("geox-url:")
-            appendLine("  geoip: \"$base/geoip.metadb\"")
-            appendLine("  geosite: \"$base/geosite.dat\"")
-            appendLine("  mmdb: \"$base/country.mmdb\"")
-            appendLine("  asn: \"$base/GeoLite2-ASN.mmdb\"")
-        }
-        return block + yaml
     }
 
     fun startTun2Socks(vpnService: android.net.VpnService, fd: Int) {

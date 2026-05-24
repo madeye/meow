@@ -192,9 +192,9 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "autocfg"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "aws-lc-rs"
@@ -359,9 +359,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.20.2"
+version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
+checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "byte_string"
@@ -1550,9 +1550,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.98"
+version = "0.3.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67df7112613f8bfd9150013a0314e196f4800d3201ae742489d999db2f979f08"
+checksum = "142bc4740e452c1e57ade0cbc129f139c9093e354346f0872ef985f4f5cf5f11"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -1610,9 +1610,9 @@ dependencies = [
 
 [[package]]
 name = "libmimalloc-sys"
-version = "0.1.48"
+version = "0.1.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2892ae4ea6fa2cb7acb0e236a6880d39523239cd9089de71d220910ccc806790"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
 dependencies = [
  "cc",
 ]
@@ -1715,6 +1715,7 @@ dependencies = [
  "ipnetwork",
  "log",
  "memchr",
+ "memmap2",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -1742,9 +1743,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "memmap2"
+version = "0.9.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "meow-api"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "axum",
  "base64",
@@ -1775,8 +1785,8 @@ dependencies = [
 
 [[package]]
 name = "meow-common"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1797,8 +1807,8 @@ dependencies = [
 
 [[package]]
 name = "meow-config"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1830,9 +1840,10 @@ dependencies = [
 
 [[package]]
 name = "meow-dns"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
+ "async-trait",
  "dashmap",
  "futures",
  "hickory-proto",
@@ -1856,8 +1867,8 @@ dependencies = [
 
 [[package]]
 name = "meow-proxy"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "anytls-rs",
  "async-trait",
@@ -1884,8 +1895,8 @@ dependencies = [
 
 [[package]]
 name = "meow-rules"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "ipnet",
  "iprange",
@@ -1893,6 +1904,7 @@ dependencies = [
  "meow-common",
  "meow-trie",
  "regex",
+ "smol_str",
  "thiserror 2.0.18",
  "tracing",
  "zstd",
@@ -1900,8 +1912,8 @@ dependencies = [
 
 [[package]]
 name = "meow-transport"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "async-trait",
  "base64",
@@ -1922,16 +1934,16 @@ dependencies = [
 
 [[package]]
 name = "meow-trie"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "smallvec",
 ]
 
 [[package]]
 name = "meow-tunnel"
-version = "0.7.6"
-source = "git+https://github.com/madeye/meow-rs.git?rev=8502a1de676ec6280895d8d4fb7ee41920003781#8502a1de676ec6280895d8d4fb7ee41920003781"
+version = "0.10.0"
+source = "git+https://github.com/madeye/meow-rs.git?tag=v0.10.0#56a646e3ffc9edb0085d3a69ee354f5b279621ca"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1943,6 +1955,7 @@ dependencies = [
  "meow-trie",
  "parking_lot",
  "serde",
+ "smol_str",
  "tokio",
  "tracing",
  "uuid",
@@ -1987,9 +2000,9 @@ dependencies = [
 
 [[package]]
 name = "mimalloc"
-version = "0.1.51"
+version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebca48a43116bc25f18a61360f1be98412f50cc218f5e52c823086b999a4a21a"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
 dependencies = [
  "libmimalloc-sys",
 ]
@@ -3693,9 +3706,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49ace1d07c165b0864824eee619580c4689389afa9dc9ed3a4c75040d82e6790"
+checksum = "3ed04576f974d2b2fba0f38c51dbc5518011e38c36bf1143164be765528fd409"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -3706,9 +3719,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.71"
+version = "0.4.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96492d0d3ffba25305a7dc88720d250b1401d7edca02cc3bcd50633b424673b8"
+checksum = "9473dbd2991ae90b6291c3c32c30c6187ac49aa32f9905d1cce280ec1e110b0f"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3716,9 +3729,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e68e6f4afd367a562002c05637acb8578ff2dea1943df76afb9e83d177c8578"
+checksum = "916151b09da36bd82f6615cbf3a419e2f0ba23a03c6160e8e92eb6bd4aa1dec6"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -3726,9 +3739,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d95a9ec35c64b2a7cb35d3fead40c4238d0940c86d107136999567a4703259f2"
+checksum = "299047362ccbfce148b67ab7e73349f77748e00c8296f9542adfad2ad82c5c5e"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -3739,9 +3752,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4e0100b01e9f0d03189a92b96772a1fb998639d981193d7dbab487302513441"
+checksum = "9a929b2c61f11ba3e9bc35b50c1f25cb38e0e892c0c231ae2b8cf78d5dad4437"
 dependencies = [
  "unicode-ident",
 ]
@@ -3782,9 +3795,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.98"
+version = "0.3.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b572dff8bcf38bad0fa19729c89bb5748b2b9b1d8be70cf90df697e3a8f32aa"
+checksum = "6d621441cfc37b84979402712047321980c178f299193a3589d05b99e8763436"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

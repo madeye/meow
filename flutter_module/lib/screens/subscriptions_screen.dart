@@ -33,6 +33,20 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (notify) notifyProfileChanged();
   }
 
+  Future<T> _runWithProgress<T>(Future<T> Function() task) async {
+    if (!mounted) return task();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      return await task();
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
   Future<void> _addSubscription() async {
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -40,7 +54,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
     if (result != null) {
       try {
-        await _vpn.addSubscription(result['name']!, result['url']!);
+        await _runWithProgress(
+            () => _vpn.addSubscription(result['name']!, result['url']!));
         await _load(notify: true);
       } catch (e) {
         if (mounted) {
@@ -92,7 +107,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   Future<void> _refreshSubscription(ClashProfile profile) async {
     try {
-      await _vpn.refreshSubscription(profile.id);
+      await _runWithProgress(() => _vpn.refreshSubscription(profile.id));
       await _load(notify: true);
       if (mounted) {
         final s = S.of(context);
@@ -132,7 +147,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {
-              await _vpn.refreshAll();
+              try {
+                await _runWithProgress(() => _vpn.refreshAll());
+              } catch (_) {}
               await _load(notify: true);
             },
           ),

@@ -63,7 +63,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     }
 
     override suspend fun startProcesses() {
-        val configDir = File(Core.deviceStorage.noBackupFilesDir, "mihomo")
+        val configDir = File(Core.deviceStorage.noBackupFilesDir, "meow")
         configDir.mkdirs()
         data.mihomoInstance!!.start(configDir, this)
         startVpn()

@@ -172,7 +172,7 @@ async fn start_engine_async(
     install_tracing_subscriber();
 
     // Resolve config path + set XDG_CONFIG_HOME (meow-config looks for
-    // $XDG_CONFIG_HOME/mihomo/Country.mmdb). Our dir is .../no_backup/mihomo,
+    // $XDG_CONFIG_HOME/meow/Country.mmdb). Our dir is .../no_backup/meow,
     // so XDG_CONFIG_HOME is the parent.
     let config_path = if let Some(dir) = HOME_DIR.lock().as_ref() {
         if let Some(parent) = std::path::Path::new(dir).parent() {
@@ -186,6 +186,13 @@ async fn start_engine_async(
     } else {
         None
     };
+
+    // Geodata DBs are bundled in the APK and seeded into the engine home
+    // dir by MihomoInstance.copyGeoxAssets() before nativeStartEngine
+    // fires. The on-disk files at `$XDG_CONFIG_HOME/meow/Country.mmdb` and
+    // `…/GeoLite2-ASN.mmdb` are guaranteed to exist by the time we reach
+    // load_config, so no pre-VPN network fetch is needed here. See
+    // `core/build.gradle.kts` (downloadGeoxAssets) for the bundling path.
 
     // Load via engine::load_stripped_config (mirrors meow-ios): strips
     // listener/sniffer/dns blocks and injects the pinned fake-IP DNS block.
@@ -214,6 +221,24 @@ async fn start_engine_async(
     if let Some(s) = secret {
         config.api.secret = if s.is_empty() { None } else { Some(s) };
     }
+
+    // Install the global host-resolver hook so `meow_common::connect_tcp_host`
+    // (used by every proxy adapter that dials by hostname — Trojan, VLESS,
+    // SS, SOCKS5, HTTP, …) routes the lookup through meow-rs's own
+    // `Resolver` instead of libc's `getaddrinfo`. Critical on Android: the
+    // VPN's DNS server is `172.19.0.2` (our TUN), so `getaddrinfo` would
+    // loop the query back through the engine's fake-IP pool and the
+    // protected outbound socket would then try to dial a non-routable
+    // `28.0.0.0/8` address. See meow-rs PR fix/connect-tcp-host-resolver-hook
+    // and `meow-dns/src/host_resolver_hook.rs` for the bridge impl.
+    //
+    // The hook itself is `#[cfg(target_os = "android")]` upstream — gate our
+    // call to match so the FFI still builds for `cargo check` on host
+    // (macOS/linux) when iterating locally.
+    #[cfg(target_os = "android")]
+    meow_common::set_host_resolver(Arc::new(meow_dns::ResolverHostHook::new(Arc::clone(
+        &config.dns.resolver,
+    ))));
 
     let raw_config = Arc::new(RwLock::new(config.raw.clone()));
     let tunnel = Tunnel::new(config.dns.resolver.clone());
