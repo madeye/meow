@@ -1,32 +1,23 @@
-//! tun2socks using netstack-smoltcp: reads raw IP packets from the Android
-//! TUN fd, routes TCP through a userspace TCP/IP stack (smoltcp), and
+//! tun2socks using lwip netstack: reads raw IP packets from the Android
+//! TUN fd, routes TCP through a userspace TCP/IP stack (lwip), and
 //! dispatches every accepted flow in-process via
-//! `meow_tunnel::tcp::handle_tcp` — same pattern meow-ios uses, with no
-//! SOCKS5 loopback hop.
+//! `meow_tunnel::tcp::handle_tcp` — same pattern as meow-ios.
 //!
-//! This module has no DNS-specific logic. Every in-TUN UDP/53 datagram is
-//! forwarded through `meow_tunnel::udp::handle_udp` with its destination
-//! rewritten to mihomo's bound `DnsServer` (loopback, pinned by
-//! `engine::pinned_dns_block`). Fake-IP synthesis, reverse mapping,
-//! upstream resolution, hosts, NXDOMAIN — all DNS handling lives inside
-//! mihomo's tunnel and resolver, not in the FFI.
-//!
-//! TCP/UDP destination IPs returned to apps are fake-IPs from mihomo's
-//! resolver pool. The dispatch path passes the literal `dst.ip()` to
-//! `meow_tunnel`, whose `pre_handle_metadata` reverses any fake-IP back to
-//! the qname the resolver originally returned, so SNI-aware proxy adapters
-//! (Trojan, HTTP/Host, VLESS) see the real hostname without any local table.
+//! DNS is handled in-process: UDP/53 packets are intercepted pre-stack,
+//! A/AAAA queries go to `DnsServer::handle_query` for fake-IP synthesis,
+//! and all other qtypes are forwarded verbatim to the pinned upstream pool.
+//! No loopback DNS server socket exists.
 
 use crate::engine;
 use crate::logging;
 use futures::{SinkExt, StreamExt};
 use meow_common::{ConnType, Metadata, Network, ProxyConn};
-use meow_tunnel::tunnel::TunnelInner;
+use meow_dns::DnsServer;
 use meow_tunnel::udp::UdpSession;
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::os::raw::c_void;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
@@ -36,24 +27,19 @@ use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::{mpsc, Semaphore};
-use tracing::warn;
+use tracing::{trace, warn};
 
-use netstack_smoltcp::{AnyIpPktFrame, StackBuilder};
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+type UdpMsg = (Vec<u8>, SocketAddr, SocketAddr);
+type AnyIpPktFrame = Vec<u8>;
 
 static TUN2SOCKS_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Burst cap: defensive backstop against the "bursty-on-flow" pattern that
-/// lets a reconnect storm (DNS lookups + pent-up connect attempts from every
-/// backgrounded app) consume excess memory before any flow completes. Drops
-/// at the accept boundary; peers see RST / packet loss for a few hundred ms
-/// instead of OOM. Mirrors the iOS DNS_BURST_CAP guard.
 const DNS_BURST_CAP: usize = 256;
-
+const DNS_TASK_TIMEOUT: Duration = Duration::from_secs(5);
 static DNS_CAP_LOG_LAST_MS: AtomicU64 = AtomicU64::new(0);
+
+const DNS_PASSTHROUGH_UPSTREAMS: &[&str] = &["119.29.29.29:53", "223.5.5.5:53"];
+const DNS_PASSTHROUGH_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn warn_capped(slot: &AtomicU64, msg: &str) {
     let now_ms = SystemTime::now()
@@ -100,45 +86,29 @@ pub fn stop() {
 
 // ---------------------------------------------------------------------------
 // Main tun2socks loop
-//
-// Key design: the Stack is NOT split. It implements both Sink (ingress) and
-// Stream (egress). futures::SplitSink/SplitStream use a BiLock that prevents
-// concurrent use — causing deadlocks when ingress and egress run on separate
-// tasks. Instead, the TUN reader feeds packets via an mpsc channel to a
-// single "stack driver" task that owns the Stack and multiplexes both
-// directions.
 // ---------------------------------------------------------------------------
 
 async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
-    logging::bridge_log("tun2socks: building netstack-smoltcp stack");
+    logging::bridge_log("tun2socks: building lwip netstack");
 
-    let (mut stack, tcp_runner, _udp_socket, tcp_listener) = StackBuilder::default()
-        .enable_tcp(true)
-        .enable_udp(false)
-        .stack_buffer_size(1024)
-        .tcp_buffer_size(512)
-        .build()?;
+    let (mut stack, mut tcp_listener, udp_socket) =
+        lwip::NetStack::with_buffer_size(1024, 256).map_err(|e| io::Error::other(e.to_string()))?;
 
-    let tcp_runner = tcp_runner.expect("TCP runner");
-    let mut tcp_listener = tcp_listener.expect("TCP listener");
+    let (udp_write, mut udp_read) = udp_socket.split();
 
-    logging::bridge_log("tun2socks: starting tasks");
+    let (udp_reply_tx, mut udp_reply_rx) = mpsc::channel::<UdpMsg>(256);
+    let reply_readers: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>> =
+        Arc::new(Mutex::new(HashSet::new()));
 
-    let (ingress_tx, mut ingress_rx) = mpsc::channel::<AnyIpPktFrame>(256);
+    let (stack_ingress_tx, mut stack_ingress_rx) = mpsc::channel::<AnyIpPktFrame>(256);
     let (egress_tx, mut egress_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let dns_sem = Arc::new(Semaphore::new(DNS_BURST_CAP));
 
-    let runner_handle = tokio::spawn(async move {
-        if let Err(e) = tcp_runner.await {
-            logging::bridge_log(&format!("tun2socks: TCP runner error: {}", e));
-        }
-    });
-
-    let egress_tx2 = egress_tx.clone();
+    let egress_tx_stack = egress_tx.clone();
     let stack_handle = tokio::spawn(async move {
         loop {
             tokio::select! {
-                pkt = ingress_rx.recv() => {
+                pkt = stack_ingress_rx.recv() => {
                     match pkt {
                         Some(frame) => {
                             if let Err(e) = stack.send(frame).await {
@@ -151,7 +121,7 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                 }
                 pkt = stack.next() => {
                     match pkt {
-                        Some(Ok(frame)) => { let _ = egress_tx2.send(frame); }
+                        Some(Ok(frame)) => { let _ = egress_tx_stack.send(frame); }
                         Some(Err(e)) => {
                             logging::bridge_log(&format!("stack recv error: {}", e));
                             break;
@@ -165,8 +135,12 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
 
     let tcp_accept_handle = tokio::spawn(async move {
         while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
+            if remote_addr.port() == 53 {
+                drop(stream);
+                continue;
+            }
             tokio::spawn(async move {
-                handle_tcp_stream(stream, local_addr, remote_addr).await;
+                dispatch_tcp(stream, local_addr, remote_addr).await;
             });
         }
     });
@@ -190,15 +164,32 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
         }
     });
 
-    // Reply readers for in-flight UDP/53 sessions, keyed by the
-    // meow-tunnel NAT key (matches what `meow_tunnel::udp::handle_udp`
-    // inserts into `nat_table`). Prevents spawning a second reader for the
-    // same flow when the app retransmits before mihomo's reply arrives.
-    let dns_reply_readers: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>> =
-        Arc::new(Mutex::new(HashSet::new()));
+    // UDP reply writer: serialises replies from per-session readers into
+    // lwip's UdpWriteHalf.
+    let udp_writer_handle = tokio::spawn(async move {
+        let udp_write = udp_write;
+        while let Some(msg) = udp_reply_rx.recv().await {
+            if let Err(e) = udp_write.send_to(&msg.0, &msg.1, &msg.2) {
+                logging::bridge_log(&format!("tun2socks: UDP reply send error: {}", e));
+                break;
+            }
+        }
+    });
 
-    let udp_reply_tx = egress_tx.clone();
-    let dns_reply_readers_reader = dns_reply_readers.clone();
+    // UDP accept: non-DNS UDP flows dispatched via meow_tunnel::udp.
+    let udp_reply_tx_accept = udp_reply_tx.clone();
+    let reply_readers_accept = reply_readers.clone();
+    let udp_accept_handle = tokio::spawn(async move {
+        while let Some((payload, src, dst)) = udp_read.next().await {
+            let reply_tx = udp_reply_tx_accept.clone();
+            let readers = reply_readers_accept.clone();
+            tokio::spawn(async move {
+                dispatch_udp(payload, src, dst, reply_tx, readers).await;
+            });
+        }
+    });
+
+    // TUN reader: reads raw IP packets, intercepts DNS pre-stack.
     let tun_reader_handle = tokio::spawn(async move {
         let mut read_buf = vec![0u8; 65535];
 
@@ -220,44 +211,79 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                 let n = n as usize;
                 let ip_data = &read_buf[..n];
 
-                // App UDP/53 queries arrive addressed to the TUN-subnet DNS
-                // IP (172.19.0.2). Dispatch through mihomo's UDP tunnel with
-                // the destination rewritten to mihomo's loopback DnsServer.
-                // tun2socks itself never parses DNS payloads — all DNS
-                // handling lives inside mihomo.
-                //
-                // The intercept is gated on `dst_ip == 172.19.0.2` so that
-                // UDP/53 packets the engine emits *out* (upstream nameserver
-                // queries from its own protected socket) can never round-trip
-                // back into the tunnel via this path.
-                if let Some(parsed) = parse_udp_packet(ip_data) {
-                    if parsed.dst_port == 53 && parsed.dst_ip == [172, 19, 0, 2] {
-                        let permit = match dns_sem.clone().try_acquire_owned() {
-                            Ok(p) => p,
-                            Err(_) => {
-                                warn_capped(
-                                    &DNS_CAP_LOG_LAST_MS,
-                                    "tun2socks: DNS burst cap reached, dropping query",
-                                );
-                                continue;
-                            }
+                // In-process DNS: intercept UDP/53 pre-stack.
+                if parse_udp_packet(ip_data).is_some_and(|p| p.dst_port == 53) {
+                    let permit = match dns_sem.clone().try_acquire_owned() {
+                        Ok(p) => p,
+                        Err(_) => {
+                            warn_capped(
+                                &DNS_CAP_LOG_LAST_MS,
+                                "tun2socks: DNS burst cap reached, dropping query",
+                            );
+                            continue;
+                        }
+                    };
+                    let request = ip_data.to_vec();
+                    let egress = egress_tx.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let work = async {
+                            let Some(parsed) = parse_udp_packet(&request) else {
+                                return;
+                            };
+                            let qtype = parse_dns_qtype(parsed.payload);
+
+                            let response_payload = if matches!(qtype, Some(1) | Some(28)) {
+                                let Some(resolver) = crate::DNS_RESOLVER.get() else {
+                                    trace!("tun2socks: DNS dropped — resolver not ready");
+                                    return;
+                                };
+                                match DnsServer::handle_query(parsed.payload, resolver).await {
+                                    Ok(bytes) => bytes,
+                                    Err(e) => {
+                                        trace!("tun2socks: DnsServer::handle_query error: {}", e);
+                                        return;
+                                    }
+                                }
+                            } else {
+                                match forward_dns_to_upstream(
+                                    parsed.payload,
+                                    DNS_PASSTHROUGH_UPSTREAMS,
+                                    DNS_PASSTHROUGH_TIMEOUT,
+                                )
+                                .await
+                                {
+                                    Some(bytes) => bytes,
+                                    None => {
+                                        trace!(
+                                            "tun2socks: DNS passthrough timed out (qtype={:?})",
+                                            qtype
+                                        );
+                                        return;
+                                    }
+                                }
+                            };
+                            let Some(reply_pkt) = build_udp_reply(&request, &response_payload)
+                            else {
+                                return;
+                            };
+                            let _ = egress.send(reply_pkt);
                         };
-                        let request = ip_data.to_vec();
-                        let reply_tx = udp_reply_tx.clone();
-                        let readers = dns_reply_readers_reader.clone();
-                        tokio::spawn(async move {
-                            let _permit = permit;
-                            dispatch_dns_via_tunnel(request, reply_tx, readers).await;
-                        });
-                        continue;
-                    }
+                        if tokio::time::timeout(DNS_TASK_TIMEOUT, work).await.is_err() {
+                            trace!(
+                                "tun2socks: DNS task exceeded {:?}, aborting",
+                                DNS_TASK_TIMEOUT
+                            );
+                        }
+                    });
+                    continue;
                 }
 
                 let frame: AnyIpPktFrame = ip_data.to_vec();
-                match ingress_tx.try_send(frame) {
+                match stack_ingress_tx.try_send(frame) {
                     Ok(()) => {}
                     Err(mpsc::error::TrySendError::Full(frame)) => {
-                        let _ = ingress_tx.send(frame).await;
+                        let _ = stack_ingress_tx.send(frame).await;
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => break,
                 }
@@ -271,29 +297,22 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
 
     let _ = tun_reader_handle.await;
 
-    runner_handle.abort();
     stack_handle.abort();
     tcp_accept_handle.abort();
+    udp_accept_handle.abort();
+    udp_writer_handle.abort();
     tun_writer_handle.abort();
+    drop(udp_reply_tx);
 
     logging::bridge_log("tun2socks: exiting");
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
-// TCP → in-process meow_tunnel dispatch
-//
-// One netstack flow → one `Metadata` → one `meow_tunnel::tcp::handle_tcp`
-// invocation. `dst_ip` is passed as-is (no local host table): mihomo's
-// `pre_handle_metadata` reverses fake-IPs back to the qname the resolver
-// returned, so SNI-aware proxy adapters see the real hostname.
+// TCP dispatch
 // ---------------------------------------------------------------------------
 
-async fn handle_tcp_stream(
-    stream: netstack_smoltcp::TcpStream,
-    src_addr: SocketAddr,
-    dst_addr: SocketAddr,
-) {
+async fn dispatch_tcp(stream: lwip::TcpStream, src_addr: SocketAddr, dst_addr: SocketAddr) {
     let tunnel = match engine::tunnel() {
         Some(t) => t,
         None => {
@@ -323,10 +342,7 @@ async fn handle_tcp_stream(
     tracing::debug!("tun2socks: flow done {} -> {}", src_addr, dst_addr);
 }
 
-/// `ProxyConn` requires an orphan-rule-friendly local type, so we wrap
-/// netstack's `TcpStream` in a newtype. The blanket `AsyncRead`/`AsyncWrite`
-/// impls are forwarded straight through; netstack already provides them.
-struct NetstackConn(netstack_smoltcp::TcpStream);
+struct NetstackConn(lwip::TcpStream);
 
 impl AsyncRead for NetstackConn {
     fn poll_read(
@@ -359,98 +375,66 @@ impl AsyncWrite for NetstackConn {
 impl ProxyConn for NetstackConn {}
 
 // ---------------------------------------------------------------------------
-// UDP/53 → mihomo tunnel dispatch
-//
-// One in-TUN DNS query → one `meow_tunnel::udp::handle_udp` call with the
-// destination rewritten to mihomo's bound loopback `DnsServer`. The tunnel's
-// rule engine matches the loopback address, dials DIRECT UDP, and inserts
-// the session into the NAT table; we then spawn a reply reader that pulls
-// the resolver's response and writes a matching UDP IP frame back to the
-// TUN. No DNS payload parsing happens in this module.
+// UDP dispatch
 // ---------------------------------------------------------------------------
 
-/// Where mihomo's `DnsServer` listens. Must match `engine::pinned_dns_block`'s
-/// `dns.listen` field exactly.
-const MIHOMO_DNS_LISTEN: SocketAddr =
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 1053);
-
-async fn dispatch_dns_via_tunnel(
-    request: Vec<u8>,
-    reply_tx: mpsc::UnboundedSender<Vec<u8>>,
+async fn dispatch_udp(
+    payload: Vec<u8>,
+    src: SocketAddr,
+    dst: SocketAddr,
+    reply_tx: mpsc::Sender<UdpMsg>,
     reply_readers: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>>,
 ) {
-    let Some(parsed) = parse_udp_packet(&request) else {
-        return;
-    };
     let Some(tunnel) = engine::tunnel() else {
-        warn!("tun2socks: DNS dropped — engine not running");
         return;
     };
 
-    // App-side endpoints (preserved for the reply frame).
-    let app_src = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(parsed.src_ip)), parsed.src_port);
-    let app_dst = SocketAddr::new(IpAddr::V4(Ipv4Addr::from(parsed.dst_ip)), parsed.dst_port);
-
-    // Rewrite the dispatch destination to mihomo's bound DnsServer. The NAT
-    // key handle_udp installs is keyed off this rewritten address; the reply
-    // reader rewrites the response frame's apparent source back to `app_dst`
-    // so the app sees the answer come from the resolver it queried.
-    let dispatch_dst = MIHOMO_DNS_LISTEN;
-    let payload = parsed.payload.to_vec();
-    let metadata = Metadata {
+    let mut metadata = Metadata {
         network: Network::Udp,
         conn_type: ConnType::Inner,
-        src_ip: Some(app_src.ip()),
-        src_port: app_src.port(),
-        dst_ip: Some(dispatch_dst.ip()),
-        dst_port: dispatch_dst.port(),
+        src_ip: Some(src.ip()),
+        src_port: src.port(),
+        dst_ip: Some(dst.ip()),
+        dst_port: dst.port(),
         ..Default::default()
     };
 
-    let inner = tunnel.inner().clone();
-    meow_tunnel::udp::handle_udp(&inner, &payload, app_src, metadata).await;
+    tunnel.inner().pre_handle_metadata(&mut metadata);
+    tunnel.inner().pre_resolve(&mut metadata).await;
+    let Some(resolved_ip) = metadata.dst_ip else {
+        return;
+    };
+    let key = (src, SocketAddr::new(resolved_ip, metadata.dst_port));
 
-    let key = (app_src, dispatch_dst);
+    meow_tunnel::udp::handle_udp(tunnel.inner(), &payload, src, metadata).await;
+
     if !reply_readers.lock().insert(key) {
         return;
     }
+
+    let inner = tunnel.inner().clone();
     let Some(session) = inner.nat_table.get(&key).map(|r| r.value().clone()) else {
-        // handle_udp bailed before the NAT insert (no rule / dial error).
         reply_readers.lock().remove(&key);
         return;
     };
 
-    spawn_dns_reply_reader(
-        key,
-        session,
-        app_src,
-        app_dst,
-        reply_tx,
-        reply_readers,
-        inner,
-    );
+    spawn_udp_reply_reader(key, session, src, dst, reply_tx, reply_readers, inner);
 }
 
-fn spawn_dns_reply_reader(
+fn spawn_udp_reply_reader(
     key: (SocketAddr, SocketAddr),
     session: Arc<UdpSession>,
     app_src: SocketAddr,
     app_dst: SocketAddr,
-    reply_tx: mpsc::UnboundedSender<Vec<u8>>,
+    reply_tx: mpsc::Sender<UdpMsg>,
     reply_readers: Arc<Mutex<HashSet<(SocketAddr, SocketAddr)>>>,
-    tunnel_inner: Arc<TunnelInner>,
+    tunnel_inner: Arc<meow_tunnel::tunnel::TunnelInner>,
 ) {
     tokio::spawn(async move {
-        // 4 KiB is enough for any DNS UDP datagram that survives the 1500-MTU
-        // TUN without fragmentation; oversized replies are truncated, which
-        // matches the on-wire reality (TC bit handling is mihomo's problem,
-        // not ours).
         let mut buf = vec![0u8; 4 * 1024];
         while let Ok((n, _from)) = session.conn.read_packet(&mut buf).await {
-            let Some(frame) = build_udp_reply_with_endpoints(app_dst, app_src, &buf[..n]) else {
-                continue;
-            };
-            if reply_tx.send(frame).is_err() {
+            let msg: UdpMsg = (buf[..n].to_vec(), app_dst, app_src);
+            if reply_tx.try_send(msg).is_err() {
                 break;
             }
         }
@@ -460,12 +444,100 @@ fn spawn_dns_reply_reader(
 }
 
 // ---------------------------------------------------------------------------
-// UDP / IP parsing helpers
+// DNS passthrough for non-A/AAAA qtypes
+// ---------------------------------------------------------------------------
+
+async fn forward_dns_to_upstream(
+    query: &[u8],
+    upstreams: &[&str],
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    if upstreams.is_empty() || query.len() < 2 {
+        return None;
+    }
+    let query_id = u16::from_be_bytes([query[0], query[1]]);
+    let query_owned = query.to_vec();
+
+    type DnsForwardFut = Pin<Box<dyn std::future::Future<Output = Option<Vec<u8>>> + Send>>;
+    let mut futs: Vec<DnsForwardFut> = Vec::with_capacity(upstreams.len());
+    for upstream in upstreams {
+        let Ok(addr) = upstream.parse::<SocketAddr>() else {
+            continue;
+        };
+        let q = query_owned.clone();
+        futs.push(Box::pin(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let stream = meow_common::connect_tcp(addr).await.ok()?;
+            let mut stream = tokio::io::BufStream::new(stream);
+            let len = u16::try_from(q.len()).ok()?;
+            stream.write_all(&len.to_be_bytes()).await.ok()?;
+            stream.write_all(&q).await.ok()?;
+            stream.flush().await.ok()?;
+            let mut len_buf = [0u8; 2];
+            tokio::time::timeout(timeout, stream.read_exact(&mut len_buf))
+                .await
+                .ok()?
+                .ok()?;
+            let resp_len = u16::from_be_bytes(len_buf) as usize;
+            let mut buf = vec![0u8; resp_len];
+            stream.read_exact(&mut buf).await.ok()?;
+            if buf.len() >= 2 && u16::from_be_bytes([buf[0], buf[1]]) == query_id {
+                Some(buf)
+            } else {
+                None
+            }
+        }));
+    }
+    while !futs.is_empty() {
+        let (result, _idx, remaining) = futures::future::select_all(futs).await;
+        if result.is_some() {
+            return result;
+        }
+        futs = remaining;
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// DNS helpers
+// ---------------------------------------------------------------------------
+
+fn parse_dns_qtype(payload: &[u8]) -> Option<u16> {
+    if payload.len() < 12 {
+        return None;
+    }
+    let qdcount = u16::from_be_bytes([payload[4], payload[5]]);
+    if qdcount == 0 {
+        return None;
+    }
+    let mut pos = 12usize;
+    loop {
+        let len = *payload.get(pos)? as usize;
+        if len == 0 {
+            pos = pos.checked_add(1)?;
+            break;
+        }
+        if len & 0xC0 == 0xC0 {
+            pos = pos.checked_add(2)?;
+            break;
+        }
+        pos = pos.checked_add(1 + len)?;
+    }
+    let hi = *payload.get(pos)?;
+    let lo = *payload.get(pos.checked_add(1)?)?;
+    Some(u16::from_be_bytes([hi, lo]))
+}
+
+// ---------------------------------------------------------------------------
+// UDP / IP packet helpers
 // ---------------------------------------------------------------------------
 
 struct ParsedUdp<'a> {
+    #[allow(dead_code)]
     src_ip: [u8; 4],
+    #[allow(dead_code)]
     src_port: u16,
+    #[allow(dead_code)]
     dst_ip: [u8; 4],
     dst_port: u16,
     payload: &'a [u8],
@@ -504,25 +576,18 @@ fn parse_udp_packet(ip_data: &[u8]) -> Option<ParsedUdp<'_>> {
     })
 }
 
-/// Build a UDP-over-IPv4 frame from explicit endpoints. UDP checksum left
-/// at 0 (legal for IPv4 per RFC 768); IPv4 header checksum is computed.
-/// Used by the DNS reply reader to inject mihomo's response back into the
-/// TUN as if it came straight from the resolver the app queried.
-fn build_udp_reply_with_endpoints(
-    src: SocketAddr,
-    dst: SocketAddr,
-    payload: &[u8],
-) -> Option<Vec<u8>> {
-    let SocketAddr::V4(src) = src else {
+fn build_udp_reply(orig_ip_data: &[u8], reply_payload: &[u8]) -> Option<Vec<u8>> {
+    if orig_ip_data.len() < 28 || (orig_ip_data[0] >> 4) != 4 || orig_ip_data[9] != 17 {
         return None;
-    };
-    let SocketAddr::V4(dst) = dst else {
+    }
+    let ihl = (orig_ip_data[0] & 0x0F) as usize * 4;
+    if ihl < 20 || orig_ip_data.len() < ihl + 8 {
         return None;
-    };
+    }
     let total_len = 20u16
         .checked_add(8)
-        .and_then(|n| n.checked_add(u16::try_from(payload.len()).ok()?))?;
-    let udp_len = 8u16.checked_add(u16::try_from(payload.len()).ok()?)?;
+        .and_then(|n| n.checked_add(u16::try_from(reply_payload.len()).ok()?))?;
+    let udp_len = 8u16.checked_add(u16::try_from(reply_payload.len()).ok()?)?;
 
     let mut pkt = Vec::with_capacity(usize::from(total_len));
     pkt.push(0x45);
@@ -533,17 +598,17 @@ fn build_udp_reply_with_endpoints(
     pkt.push(64);
     pkt.push(17);
     pkt.extend_from_slice(&[0, 0]);
-    pkt.extend_from_slice(&src.ip().octets());
-    pkt.extend_from_slice(&dst.ip().octets());
+    pkt.extend_from_slice(&orig_ip_data[16..20]); // src = original dst
+    pkt.extend_from_slice(&orig_ip_data[12..16]); // dst = original src
 
     let cksum = ipv4_header_checksum(&pkt[0..20]);
     pkt[10..12].copy_from_slice(&cksum.to_be_bytes());
 
-    pkt.extend_from_slice(&src.port().to_be_bytes());
-    pkt.extend_from_slice(&dst.port().to_be_bytes());
+    pkt.extend_from_slice(&orig_ip_data[ihl + 2..ihl + 4]); // src port = original dst port
+    pkt.extend_from_slice(&orig_ip_data[ihl..ihl + 2]); // dst port = original src port
     pkt.extend_from_slice(&udp_len.to_be_bytes());
     pkt.extend_from_slice(&[0, 0]);
-    pkt.extend_from_slice(payload);
+    pkt.extend_from_slice(reply_payload);
 
     Some(pkt)
 }

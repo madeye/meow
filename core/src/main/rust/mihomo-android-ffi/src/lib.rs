@@ -25,7 +25,6 @@ use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 use meow_api::log_stream::{LogBroadcastLayer, LogMessage};
 use meow_api::ApiServer;
-use meow_dns::DnsServer;
 use meow_tunnel::Tunnel;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
@@ -77,6 +76,7 @@ pub(crate) struct EngineState {
 
 pub(crate) static ENGINE: Mutex<Option<EngineState>> = Mutex::new(None);
 pub(crate) static HOME_DIR: Mutex<Option<String>> = Mutex::new(None);
+pub(crate) static DNS_RESOLVER: OnceLock<Arc<meow_dns::Resolver>> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
 // Thread-local error message
@@ -240,6 +240,8 @@ async fn start_engine_async(
         &config.dns.resolver,
     ))));
 
+    let _ = DNS_RESOLVER.set(config.dns.resolver.clone());
+
     let raw_config = Arc::new(RwLock::new(config.raw.clone()));
     let tunnel = Tunnel::new(config.dns.resolver.clone());
     tunnel.set_mode(config.general.mode);
@@ -248,9 +250,6 @@ async fn start_engine_async(
 
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    // meow-rs v0.6.0 ApiServer::new grew from 5 → 9 params for the new
-    // /providers/*, /rules, /listeners and /logs routes. Build the required
-    // shapes from the loaded Config.
     let proxy_providers = {
         let map: DashMap<_, _> = config.proxy_providers.into_iter().collect();
         Arc::new(map)
@@ -260,21 +259,6 @@ async fn start_engine_async(
     ));
     let listeners_for_api = config.listeners.named.clone();
     let log_tx = log_broadcast_tx().clone();
-
-    // Spawn mihomo's DnsServer on the loopback address pinned by
-    // `engine::pinned_dns_block` (127.0.0.1:1053). tun2socks dispatches
-    // every in-TUN UDP/53 datagram through `meow_tunnel::udp::handle_udp`
-    // with its destination rewritten to this address — DNS rides the same
-    // in-process tunnel path as application UDP traffic.
-    if let Some(addr) = config.dns.listen_addr {
-        let resolver = config.dns.resolver.clone();
-        handles.push(tokio::spawn(async move {
-            let dns_server = DnsServer::new(resolver, addr);
-            if let Err(e) = dns_server.run().await {
-                tracing::error!("DNS server error: {}", e);
-            }
-        }));
-    }
 
     if let Some(api_addr) = config.api.external_controller {
         let api_server = ApiServer::new(

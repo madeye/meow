@@ -58,7 +58,7 @@ nix = { version = "0.29", features = ["fs"] }
 socket2 = "0.5"
 
 # tun2socks
-netstack-smoltcp = "0.2"
+lwip = "0.3"
 
 # Persistent DNS answer cache (single-writer KV at $HOME_DIR/doh-cache.redb;
 # filename retained for backward compatibility).

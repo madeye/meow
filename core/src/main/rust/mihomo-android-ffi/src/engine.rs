@@ -52,12 +52,12 @@ pub fn tunnel() -> Option<Tunnel> {
 pub fn pinned_dns_block() -> serde_yaml::Value {
     let yaml = r#"
 enable: true
-listen: 127.0.0.1:1053
+listen: ""
 enhanced-mode: fake-ip
 fake-ip-range: 28.0.0.0/8
 nameserver:
-  - tcp://119.29.29.29:53
-  - tcp://223.5.5.5:53
+  - tcp://119.29.29.29
+  - tcp://223.5.5.5
 "#;
     serde_yaml::from_str(yaml).expect("pinned DNS YAML is a compile-time constant")
 }
