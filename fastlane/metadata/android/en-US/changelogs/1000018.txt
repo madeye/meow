@@ -1,0 +1,2 @@
+- Updated core networking engine to meow-rs v0.12.0
+- Improved stability and performance
