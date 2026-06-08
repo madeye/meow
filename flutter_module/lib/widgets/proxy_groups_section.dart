@@ -86,7 +86,8 @@ class _ProxyGroupsSectionState extends State<ProxyGroupsSection> {
     _offline = false;
     if (mounted) setState(() {});
     try {
-      final getProxies = widget.getProxiesOverride ?? MihomoApi.instance.getProxies;
+      final getProxies =
+          widget.getProxiesOverride ?? MihomoApi.instance.getProxies;
       final result = await getProxies();
       if (!mounted) return;
       for (final proxy in result.proxies.values) {
@@ -127,7 +128,8 @@ class _ProxyGroupsSectionState extends State<ProxyGroupsSection> {
     if (!widget.isVpnConnected) return;
 
     try {
-      final selectProxy = widget.selectProxyOverride ?? MihomoApi.instance.selectProxy;
+      final selectProxy =
+          widget.selectProxyOverride ?? MihomoApi.instance.selectProxy;
       await selectProxy(group, name);
     } catch (_) {
       if (mounted) {
@@ -140,7 +142,8 @@ class _ProxyGroupsSectionState extends State<ProxyGroupsSection> {
   Future<void> _testGroupDelay(String group) async {
     setState(() => _testing[group] = true);
     try {
-      final testDelay = widget.testGroupDelayOverride ?? MihomoApi.instance.testGroupDelay;
+      final testDelay =
+          widget.testGroupDelayOverride ?? MihomoApi.instance.testGroupDelay;
       final results = await testDelay(group);
       if (!mounted) return;
       setState(() => _delays.addAll(results));
@@ -159,12 +162,18 @@ class _ProxyGroupsSectionState extends State<ProxyGroupsSection> {
 
   Color _typeBadgeColor(String type) {
     switch (type) {
-      case 'Selector': return Colors.blueAccent;
-      case 'URLTest': return Colors.tealAccent;
-      case 'Fallback': return Colors.amberAccent;
-      case 'LoadBalance': return Colors.purpleAccent;
-      case 'Relay': return Colors.pinkAccent;
-      default: return Colors.grey;
+      case 'Selector':
+        return Colors.blueAccent;
+      case 'URLTest':
+        return Colors.tealAccent;
+      case 'Fallback':
+        return Colors.amberAccent;
+      case 'LoadBalance':
+        return Colors.purpleAccent;
+      case 'Relay':
+        return Colors.pinkAccent;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -199,60 +208,63 @@ class _ProxyGroupsSectionState extends State<ProxyGroupsSection> {
     }
 
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-              child: Row(
-                children: [
-                  Text(
-                    s.proxyGroups,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+      delegate: SliverChildBuilderDelegate((context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+            child: Row(
+              children: [
+                Text(
+                  s.proxyGroups,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                if (_offline) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      s.engineOffline,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
                     ),
                   ),
-                  if (_offline) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        s.engineOffline,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
-              ),
-            );
-          }
-          final group = groups[index - 1];
-          final theme = Theme.of(context);
-          return _GroupCard(
-            group: group,
-            proxies: _result?.proxies ?? {},
-            selected: _selections[group.name] ?? group.now,
-            delays: _delays,
-            expanded: _expanded[group.name] ?? false,
-            testing: _testing[group.name] ?? false,
-            onExpand: (v) => setState(() => _expanded[group.name] = v),
-            onSelect: (name) => _selectProxy(group.name, name),
-            onTest: widget.isVpnConnected ? () => _testGroupDelay(group.name) : null,
-            latencyColor: (ms) => _latencyColor(ms, mutedColor: theme.colorScheme.onSurfaceVariant),
-            typeBadgeColor: _typeBadgeColor,
+              ],
+            ),
           );
-        },
-        childCount: groups.length + 1,
-      ),
+        }
+        final group = groups[index - 1];
+        final theme = Theme.of(context);
+        return _GroupCard(
+          group: group,
+          proxies: _result?.proxies ?? {},
+          selected: _selections[group.name] ?? group.now,
+          delays: _delays,
+          expanded: _expanded[group.name] ?? false,
+          testing: _testing[group.name] ?? false,
+          onExpand: (v) => setState(() => _expanded[group.name] = v),
+          onSelect: (name) => _selectProxy(group.name, name),
+          onTest: widget.isVpnConnected
+              ? () => _testGroupDelay(group.name)
+              : null,
+          latencyColor: (ms) =>
+              _latencyColor(ms, mutedColor: theme.colorScheme.onSurfaceVariant),
+          typeBadgeColor: _typeBadgeColor,
+        );
+      }, childCount: groups.length + 1),
     );
   }
 }
@@ -288,6 +300,7 @@ class _GroupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final badgeColor = typeBadgeColor(group.type);
+    final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -298,7 +311,10 @@ class _GroupCard extends StatelessWidget {
               onTap: () => onExpand(!expanded),
               borderRadius: BorderRadius.circular(12),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -316,15 +332,23 @@ class _GroupCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: badgeColor.withAlpha(40),
                                   borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: badgeColor.withAlpha(100)),
+                                  border: Border.all(
+                                    color: badgeColor.withAlpha(100),
+                                  ),
                                 ),
                                 child: Text(
                                   group.type,
-                                  style: TextStyle(fontSize: 10, color: badgeColor),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: badgeColor,
+                                  ),
                                 ),
                               ),
                             ],
@@ -332,7 +356,12 @@ class _GroupCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             selected,
-                            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -355,7 +384,10 @@ class _GroupCard extends StatelessWidget {
                   children: [
                     if (testing)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -365,7 +397,15 @@ class _GroupCard extends StatelessWidget {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                             const SizedBox(width: 6),
-                            Text(s.testing, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                            Text(
+                              s.testing,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -387,12 +427,15 @@ class _GroupCard extends StatelessWidget {
                   dense: true,
                   leading: Icon(
                     isSelected ? Icons.check_circle : Icons.circle_outlined,
-                    color: isSelected ? Colors.greenAccent : Theme.of(context).colorScheme.outlineVariant,
+                    color: isSelected ? cs.primary : cs.outlineVariant,
                     size: 18,
                   ),
                   title: Text(nodeName, style: const TextStyle(fontSize: 13)),
                   trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: latencyColor(delay).withAlpha(30),
                       borderRadius: BorderRadius.circular(4),

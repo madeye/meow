@@ -18,13 +18,13 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.12.0", features = ["anytls", "ech-tls-tunnel"] }
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0", features = ["anytls", "ech-tls-tunnel"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.13.0", features = ["anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new

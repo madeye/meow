@@ -163,9 +163,18 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.cloud_off, size: 64, color: Colors.white24),
+                      Icon(Icons.cloud_off,
+                          size: 64,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.5)),
                       const SizedBox(height: 16),
-                      Text(s.noSubscriptions, style: const TextStyle(color: Colors.white38)),
+                      Text(s.noSubscriptions,
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _addSubscription,
@@ -225,6 +234,7 @@ class _ProfileTileState extends State<_ProfileTile> {
     final updated = p.lastUpdated > 0
         ? DateTime.fromMillisecondsSinceEpoch(p.lastUpdated * 1000)
         : null;
+    final cs = Theme.of(context).colorScheme;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -233,7 +243,9 @@ class _ProfileTileState extends State<_ProfileTile> {
           ListTile(
             leading: Icon(
               p.selected ? Icons.check_circle : Icons.circle_outlined,
-              color: p.selected ? Colors.greenAccent : Colors.white38,
+              color: p.selected
+                  ? cs.primary
+                  : cs.onSurfaceVariant.withValues(alpha: 0.5),
             ),
             title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Column(
@@ -241,12 +253,12 @@ class _ProfileTileState extends State<_ProfileTile> {
               children: [
                 if (p.url.isNotEmpty)
                   Text(p.url, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Colors.white38)),
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 if (updated != null)
                   Text('Updated: ${updated.toLocal().toString().substring(0, 16)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.white24)),
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                 Text('${proxyNames.length} ${s.proxies}',
-                    style: const TextStyle(fontSize: 11, color: Colors.white24)),
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ],
             ),
             trailing: Row(

@@ -5,6 +5,7 @@ import 'screens/home_screen.dart';
 import 'screens/subscriptions_screen.dart';
 import 'screens/traffic_screen.dart';
 import 'screens/settings_screen.dart';
+import 'theme/app_theme.dart';
 
 final profileChanged = ValueNotifier<int>(0);
 
@@ -24,20 +25,8 @@ class MihomoApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(useMaterial3: true).copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFE8843A),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFFFF1E0),
-      ),
-      darkTheme: ThemeData.dark(useMaterial3: true).copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFFA458),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF1A140E),
-      ),
+      theme: buildAppTheme(Brightness.light),
+      darkTheme: buildAppTheme(Brightness.dark),
       home: const MainScreen(),
     );
   }
@@ -70,9 +59,18 @@ class _MainScreenState extends State<MainScreen> {
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home), label: s.home),
-          NavigationDestination(icon: const Icon(Icons.dns), label: s.subscribe),
-          NavigationDestination(icon: const Icon(Icons.show_chart), label: s.traffic),
-          NavigationDestination(icon: const Icon(Icons.settings), label: s.settings),
+          NavigationDestination(
+            icon: const Icon(Icons.dns),
+            label: s.subscribe,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.show_chart),
+            label: s.traffic,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.settings),
+            label: s.settings,
+          ),
         ],
       ),
     );

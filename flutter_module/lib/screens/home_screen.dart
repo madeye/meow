@@ -8,6 +8,7 @@ import '../models/traffic_stats.dart';
 import '../models/profile.dart';
 import '../models/proxy_group.dart';
 import '../services/mihomo_api.dart';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,7 +36,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _stateSub = _vpn.stateStream.listen((s) {
       final wasConnected = _state == VpnState.connected;
       if (mounted) setState(() => _state = s);
-      if (!wasConnected && s == VpnState.connected && _selectedProxy != null && _profile != null) {
+      if (!wasConnected &&
+          s == VpnState.connected &&
+          _selectedProxy != null &&
+          _profile != null) {
         _vpn.selectProxyNode(_selectedProxy!, _profile!.yamlContent);
       }
     });
@@ -95,12 +99,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final changed = _profile?.id != profile?.id;
           _profile = profile;
           _proxyNames = names;
-          if (changed || _selectedProxy == null || !_proxyNames.contains(_selectedProxy)) {
+          if (changed ||
+              _selectedProxy == null ||
+              !_proxyNames.contains(_selectedProxy)) {
             final saved = profile?.selectedProxy ?? '';
             if (saved.isNotEmpty && _proxyNames.contains(saved)) {
               _selectedProxy = saved;
             } else {
-              _selectedProxy = _proxyNames.isNotEmpty ? _proxyNames.first : null;
+              _selectedProxy = _proxyNames.isNotEmpty
+                  ? _proxyNames.first
+                  : null;
             }
           }
         });
@@ -130,9 +138,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
     // Reset after state stream delivers the transitioning state,
@@ -162,7 +170,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 if (_selectedProxy != null && isOn)
                   Text(
                     _selectedProxy!,
-                    style: const TextStyle(fontSize: 12, color: Colors.white54, fontWeight: FontWeight.normal),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.normal,
+                    ),
                   ),
               ],
             ),
@@ -182,8 +194,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     : Switch(
                         key: const ValueKey('switch'),
                         value: isOn,
-                        onChanged: _state.canToggle && !_toggling ? _toggle : null,
-                        activeTrackColor: Colors.greenAccent,
+                        onChanged: _state.canToggle && !_toggling
+                            ? _toggle
+                            : null,
                       ),
               ),
             ],
@@ -196,8 +209,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isOn)
             SliverToBoxAdapter(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -240,8 +255,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (_profile != null)
                     Text(
                       _profile!.name,
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.white38),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                 ],
               ),
@@ -256,30 +273,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Text(
                   s.noSubscriptionHint,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white38),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             )
           else
             SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final name = _proxyNames[index];
-                  final selected = name == _selectedProxy;
-                  return _ProxyNodeTile(
-                    name: name,
-                    selected: selected,
-                    onTap: () {
-                      setState(() => _selectedProxy = name);
-                      if (_profile != null) {
-                        _vpn.saveSelectedProxy(_profile!.id, name);
-                        _vpn.selectProxyNode(name, _profile!.yamlContent);
-                      }
-                    },
-                  );
-                },
-                childCount: _proxyNames.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final name = _proxyNames[index];
+                final selected = name == _selectedProxy;
+                return _ProxyNodeTile(
+                  name: name,
+                  selected: selected,
+                  onTap: () {
+                    setState(() => _selectedProxy = name);
+                    if (_profile != null) {
+                      _vpn.saveSelectedProxy(_profile!.id, name);
+                      _vpn.selectProxyNode(name, _profile!.yamlContent);
+                    }
+                  },
+                );
+              }, childCount: _proxyNames.length),
             ),
 
           // Bottom padding
@@ -291,16 +307,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildStatusCard(bool isOn) {
     final s = S.of(context);
+    final theme = Theme.of(context);
+    final meow = theme.extension<MeowColors>()!;
     String stateLabel(VpnState state) {
       switch (state) {
-        case VpnState.idle: return s.notConnected;
-        case VpnState.connecting: return s.connecting;
-        case VpnState.connected: return s.connected;
-        case VpnState.stopping: return s.disconnecting;
-        case VpnState.stopped: return s.disconnected;
+        case VpnState.idle:
+          return s.notConnected;
+        case VpnState.connecting:
+          return s.connecting;
+        case VpnState.connected:
+          return s.connected;
+        case VpnState.stopping:
+          return s.disconnecting;
+        case VpnState.stopped:
+          return s.disconnected;
       }
     }
-    final color = isOn ? Colors.greenAccent : Colors.grey;
+
+    final color = isOn ? meow.connected : theme.colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Card(
@@ -338,8 +362,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     if (_selectedProxy != null)
                       Text(
                         _selectedProxy!,
-                        style: const TextStyle(
-                            fontSize: 13, color: Colors.white54),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                   ],
                 ),
@@ -367,22 +393,28 @@ class _TrafficTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: Colors.white54),
+            Icon(icon, size: 20, color: cs.primary),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(rate,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                Text('$total $label',
-                    style:
-                        const TextStyle(fontSize: 11, color: Colors.white38)),
+                Text(
+                  rate,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '$total $label',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
               ],
             ),
           ],
@@ -405,16 +437,17 @@ class _ProxyNodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Card(
-        color: selected
-            ? Theme.of(context).colorScheme.primaryContainer.withAlpha(60)
-            : null,
+        color: selected ? cs.primaryContainer : null,
         child: ListTile(
           leading: Icon(
             selected ? Icons.check_circle : Icons.circle_outlined,
-            color: selected ? Colors.greenAccent : Colors.white24,
+            color: selected
+                ? cs.onPrimaryContainer
+                : cs.onSurfaceVariant.withValues(alpha: 0.5),
             size: 22,
           ),
           title: Text(
@@ -422,11 +455,18 @@ class _ProxyNodeTile extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              color: selected ? cs.onPrimaryContainer : null,
             ),
           ),
           trailing: selected
-              ? Text(S.of(context).active,
-                  style: const TextStyle(fontSize: 11, color: Colors.greenAccent))
+              ? Text(
+                  S.of(context).active,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onPrimaryContainer,
+                  ),
+                )
               : null,
           onTap: onTap,
           dense: true,

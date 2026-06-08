@@ -6,6 +6,7 @@ import '../services/vpn_channel.dart';
 import '../services/traffic_history.dart';
 import '../models/vpn_state.dart';
 import '../models/traffic_stats.dart';
+import '../theme/app_theme.dart';
 
 class TrafficScreen extends StatefulWidget {
   const TrafficScreen({super.key});
@@ -51,17 +52,21 @@ class _TrafficScreenState extends State<TrafficScreen> {
         _traffic = t;
         _sessionUpload = t.txTotal;
         _sessionDownload = t.rxTotal;
-        _samples.add(_TrafficSample(
-          time: DateTime.now(),
-          txRate: t.txRate,
-          rxRate: t.rxRate,
-        ));
+        _samples.add(
+          _TrafficSample(
+            time: DateTime.now(),
+            txRate: t.txRate,
+            rxRate: t.rxRate,
+          ),
+        );
         if (_samples.length > 60) _samples.removeAt(0);
       });
       // Reload history from DB every 10 updates (~10 seconds)
       _trafficUpdateCount++;
       if (_trafficUpdateCount % 10 == 0) {
-        _history.load().then((_) { if (mounted) setState(() {}); });
+        _history.load().then((_) {
+          if (mounted) setState(() {});
+        });
       }
     });
   }
@@ -86,6 +91,8 @@ class _TrafficScreenState extends State<TrafficScreen> {
     final isOn = _state == VpnState.connected;
     final todayTraffic = _history.today;
     final monthTraffic = _history.thisMonth;
+    final theme = Theme.of(context);
+    final meow = theme.extension<MeowColors>()!;
 
     return Scaffold(
       appBar: AppBar(title: Text(s.traffic)),
@@ -105,7 +112,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
                 child: _UsageCard(
                   label: s.today,
                   icon: Icons.today,
-                  color: Colors.amber,
+                  color: meow.upload,
                   tx: todayTraffic.tx,
                   rx: todayTraffic.rx,
                 ),
@@ -115,7 +122,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
                 child: _UsageCard(
                   label: s.thisMonth,
                   icon: Icons.calendar_month,
-                  color: Colors.orange,
+                  color: theme.colorScheme.tertiary,
                   tx: monthTraffic.tx,
                   rx: monthTraffic.rx,
                 ),
@@ -133,7 +140,9 @@ class _TrafficScreenState extends State<TrafficScreen> {
                 ? Center(
                     child: Text(
                       s.noHistoryData,
-                      style: const TextStyle(color: Colors.white38),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : _DailyChart(days: _history.days),
@@ -148,7 +157,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
               Expanded(
                 child: _StatCard(
                   icon: Icons.arrow_upward,
-                  color: Colors.blue,
+                  color: meow.upload,
                   label: s.upload,
                   value: _formatBytes(_sessionUpload),
                   rate: _traffic.txRateStr,
@@ -158,7 +167,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
               Expanded(
                 child: _StatCard(
                   icon: Icons.arrow_downward,
-                  color: Colors.green,
+                  color: meow.download,
                   label: s.download,
                   value: _formatBytes(_sessionDownload),
                   rate: _traffic.rxRateStr,
@@ -177,7 +186,9 @@ class _TrafficScreenState extends State<TrafficScreen> {
                 ? Center(
                     child: Text(
                       isOn ? s.collectingData : s.connectToSeeTraffic,
-                      style: const TextStyle(color: Colors.white38),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : _SpeedChart(samples: _samples),
@@ -189,7 +200,9 @@ class _TrafficScreenState extends State<TrafficScreen> {
   }
 
   static String _formatBytes(int bytes) {
-    if (bytes >= 1073741824) return '${(bytes / 1073741824).toStringAsFixed(2)} GB';
+    if (bytes >= 1073741824) {
+      return '${(bytes / 1073741824).toStringAsFixed(2)} GB';
+    }
     if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(2)} MB';
     if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '$bytes B';
@@ -200,7 +213,11 @@ class _TrafficSample {
   final DateTime time;
   final int txRate;
   final int rxRate;
-  const _TrafficSample({required this.time, required this.txRate, required this.rxRate});
+  const _TrafficSample({
+    required this.time,
+    required this.txRate,
+    required this.rxRate,
+  });
 }
 
 // --- Widgets ---
@@ -212,23 +229,22 @@ class _StatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final theme = Theme.of(context);
+    final meow = theme.extension<MeowColors>()!;
+    final color = connected
+        ? meow.connected
+        : theme.colorScheme.onSurfaceVariant;
     return Row(
       children: [
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: connected ? Colors.greenAccent : Colors.grey,
-          ),
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
         ),
         const SizedBox(width: 8),
         Text(
           connected ? s.connected : s.disconnected,
-          style: TextStyle(
-            color: connected ? Colors.greenAccent : Colors.grey,
-            fontSize: 13,
-          ),
+          style: TextStyle(color: color, fontSize: 13),
         ),
       ],
     );
@@ -269,6 +285,7 @@ class _UsageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final meow = Theme.of(context).extension<MeowColors>()!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -279,24 +296,55 @@ class _UsageCard extends StatelessWidget {
               children: [
                 Icon(icon, color: color, size: 18),
                 const SizedBox(width: 6),
-                Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               _TrafficScreenState._formatBytes(tx + rx),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.arrow_upward, size: 12, color: Colors.blue.withAlpha(180)),
+                Icon(
+                  Icons.arrow_upward,
+                  size: 12,
+                  color: meow.upload.withAlpha(180),
+                ),
                 const SizedBox(width: 2),
-                Text(_TrafficScreenState._formatBytes(tx), style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                Text(
+                  _TrafficScreenState._formatBytes(tx),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Icon(Icons.arrow_downward, size: 12, color: Colors.green.withAlpha(180)),
+                Icon(
+                  Icons.arrow_downward,
+                  size: 12,
+                  color: meow.download.withAlpha(180),
+                ),
                 const SizedBox(width: 2),
-                Text(_TrafficScreenState._formatBytes(rx), style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                Text(
+                  _TrafficScreenState._formatBytes(rx),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ],
@@ -334,21 +382,32 @@ class _StatCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     value,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ],
               ),
             ),
             Text(
               rate,
-              style: const TextStyle(
-                color: Colors.white54,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
-                fontFeatures: [FontFeature.tabularFigures()],
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ],
@@ -376,8 +435,12 @@ class _DailyChartState extends State<_DailyChart> {
     final allDays = <DailyTraffic>[];
     for (var i = 29; i >= 0; i--) {
       final dt = now.subtract(Duration(days: i));
-      final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-      final entry = widget.days.cast<DailyTraffic?>().firstWhere((d) => d!.date == key, orElse: () => null);
+      final key =
+          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      final entry = widget.days.cast<DailyTraffic?>().firstWhere(
+        (d) => d!.date == key,
+        orElse: () => null,
+      );
       allDays.add(entry ?? DailyTraffic(date: key));
     }
     return allDays;
@@ -385,6 +448,8 @@ class _DailyChartState extends State<_DailyChart> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final meow = Theme.of(context).extension<MeowColors>()!;
     final allDays = _buildAllDays();
     final selected = _selectedIndex != null && _selectedIndex! < allDays.length
         ? allDays[_selectedIndex!]
@@ -403,37 +468,68 @@ class _DailyChartState extends State<_DailyChart> {
                     children: [
                       Text(
                         selected.date,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      Icon(Icons.arrow_upward, size: 11, color: Colors.blue.withAlpha(200)),
+                      Icon(
+                        Icons.arrow_upward,
+                        size: 11,
+                        color: meow.upload.withAlpha(200),
+                      ),
                       const SizedBox(width: 2),
                       Text(
                         _TrafficScreenState._formatBytes(selected.tx),
-                        style: const TextStyle(fontSize: 11, color: Colors.blue, fontFeatures: [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: meow.upload,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                       const SizedBox(width: 10),
-                      Icon(Icons.arrow_downward, size: 11, color: Colors.green.withAlpha(200)),
+                      Icon(
+                        Icons.arrow_downward,
+                        size: 11,
+                        color: meow.download.withAlpha(200),
+                      ),
                       const SizedBox(width: 2),
                       Text(
                         _TrafficScreenState._formatBytes(selected.rx),
-                        style: const TextStyle(fontSize: 11, color: Colors.green, fontFeatures: [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: meow.download,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                       const SizedBox(width: 10),
-                      Icon(Icons.swap_vert, size: 11, color: Colors.white54),
+                      Icon(
+                        Icons.swap_vert,
+                        size: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 2),
                       Text(
                         _TrafficScreenState._formatBytes(selected.total),
-                        style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()]),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ],
                   ),
                 )
-              : const Padding(
-                  padding: EdgeInsets.only(bottom: 4),
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     'Tap a bar to see details',
-                    style: TextStyle(fontSize: 11, color: Colors.white38),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
         ),
@@ -447,14 +543,26 @@ class _DailyChartState extends State<_DailyChart> {
               final leftMargin = 44.0;
               final chartW = box.size.width - leftMargin;
               if (localX < leftMargin) return;
-              final index = ((localX - leftMargin) / chartW * 30).floor().clamp(0, 29);
+              final index = ((localX - leftMargin) / chartW * 30).floor().clamp(
+                0,
+                29,
+              );
               setState(() {
                 _selectedIndex = _selectedIndex == index ? null : index;
               });
             },
             child: CustomPaint(
               size: Size.infinite,
-              painter: _DailyChartPainter(days: allDays, selectedIndex: _selectedIndex),
+              painter: _DailyChartPainter(
+                days: allDays,
+                selectedIndex: _selectedIndex,
+                gridColor: cs.outlineVariant,
+                labelColor: cs.onSurfaceVariant,
+                emphasisColor: cs.onSurface,
+                highlightColor: cs.onSurface.withValues(alpha: 0.06),
+                uploadColor: meow.upload,
+                downloadColor: meow.download,
+              ),
             ),
           ),
         ),
@@ -466,7 +574,22 @@ class _DailyChartState extends State<_DailyChart> {
 class _DailyChartPainter extends CustomPainter {
   final List<DailyTraffic> days;
   final int? selectedIndex;
-  _DailyChartPainter({required this.days, this.selectedIndex});
+  final Color gridColor;
+  final Color labelColor;
+  final Color emphasisColor;
+  final Color highlightColor;
+  final Color uploadColor;
+  final Color downloadColor;
+  _DailyChartPainter({
+    required this.days,
+    this.selectedIndex,
+    required this.gridColor,
+    required this.labelColor,
+    required this.emphasisColor,
+    required this.highlightColor,
+    required this.uploadColor,
+    required this.downloadColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -484,18 +607,30 @@ class _DailyChartPainter extends CustomPainter {
     }
 
     // Grid
-    final gridPaint = Paint()..color = Colors.white10..strokeWidth = 0.5;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 0.5;
     for (var i = 0; i <= 4; i++) {
       final y = (chartH / 4) * i;
       canvas.drawLine(Offset(leftMargin, y), Offset(w, y), gridPaint);
     }
 
     // Y-axis labels
-    final labelStyle = TextStyle(color: Colors.white38, fontSize: 9, fontFeatures: const [FontFeature.tabularFigures()]);
+    final labelStyle = TextStyle(
+      color: labelColor,
+      fontSize: 9,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     for (var i = 0; i <= 4; i++) {
       final val = maxTotal * (4 - i) ~/ 4;
       final y = (chartH / 4) * i;
-      _drawText(canvas, _formatBytes(val), Offset(0, y - 6), labelStyle, leftMargin - 4);
+      _drawText(
+        canvas,
+        _formatBytes(val),
+        Offset(0, y - 6),
+        labelStyle,
+        leftMargin - 4,
+      );
     }
 
     // Bars
@@ -508,7 +643,7 @@ class _DailyChartPainter extends CustomPainter {
       final x = leftMargin + (chartW / barCount) * i + gap / 2;
       final isSelected = i == selectedIndex;
 
-      // Download (green) on bottom, Upload (blue) on top
+      // Download on bottom, upload on top.
       final rxH = (d.rx / maxTotal) * chartH;
       final txH = (d.tx / maxTotal) * chartH;
 
@@ -518,8 +653,12 @@ class _DailyChartPainter extends CustomPainter {
       // Highlight background for selected bar
       if (isSelected) {
         final highlightRect = Rect.fromLTWH(
-          leftMargin + (chartW / barCount) * i, 0, chartW / barCount, chartH);
-        canvas.drawRect(highlightRect, Paint()..color = Colors.white.withAlpha(15));
+          leftMargin + (chartW / barCount) * i,
+          0,
+          chartW / barCount,
+          chartH,
+        );
+        canvas.drawRect(highlightRect, Paint()..color = highlightColor);
       }
 
       // Download bar
@@ -528,7 +667,10 @@ class _DailyChartPainter extends CustomPainter {
           Rect.fromLTWH(x, chartH - rxH, barWidth, rxH),
           const Radius.circular(1.5),
         );
-        canvas.drawRRect(rxRect, Paint()..color = Colors.green.withAlpha(rxAlpha));
+        canvas.drawRRect(
+          rxRect,
+          Paint()..color = downloadColor.withAlpha(rxAlpha),
+        );
       }
 
       // Upload bar (stacked on top)
@@ -537,7 +679,10 @@ class _DailyChartPainter extends CustomPainter {
           Rect.fromLTWH(x, chartH - rxH - txH, barWidth, txH),
           const Radius.circular(1.5),
         );
-        canvas.drawRRect(txRect, Paint()..color = Colors.blue.withAlpha(txAlpha));
+        canvas.drawRRect(
+          txRect,
+          Paint()..color = uploadColor.withAlpha(txAlpha),
+        );
       }
 
       // X-axis labels (show every 5 days, last day, and selected)
@@ -547,8 +692,11 @@ class _DailyChartPainter extends CustomPainter {
           canvas,
           dateLabel,
           Offset(x - 2, chartH + 4),
-          TextStyle(color: isSelected ? Colors.white : Colors.white38, fontSize: 8,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal),
+          TextStyle(
+            color: isSelected ? emphasisColor : labelColor,
+            fontSize: 8,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
           40,
         );
       }
@@ -557,19 +705,43 @@ class _DailyChartPainter extends CustomPainter {
     // Legend
     final legendY = h - 8;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(w / 2 - 80, legendY - 5, 10, 10), const Radius.circular(2)),
-      Paint()..color = Colors.blue.withAlpha(180),
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w / 2 - 80, legendY - 5, 10, 10),
+        const Radius.circular(2),
+      ),
+      Paint()..color = uploadColor.withAlpha(180),
     );
-    _drawText(canvas, 'Upload', Offset(w / 2 - 66, legendY - 7), const TextStyle(color: Colors.white54, fontSize: 10), 50);
+    _drawText(
+      canvas,
+      'Upload',
+      Offset(w / 2 - 66, legendY - 7),
+      TextStyle(color: labelColor, fontSize: 10),
+      50,
+    );
 
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(w / 2 + 10, legendY - 5, 10, 10), const Radius.circular(2)),
-      Paint()..color = Colors.green.withAlpha(180),
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w / 2 + 10, legendY - 5, 10, 10),
+        const Radius.circular(2),
+      ),
+      Paint()..color = downloadColor.withAlpha(180),
     );
-    _drawText(canvas, 'Download', Offset(w / 2 + 24, legendY - 7), const TextStyle(color: Colors.white54, fontSize: 10), 60);
+    _drawText(
+      canvas,
+      'Download',
+      Offset(w / 2 + 24, legendY - 7),
+      TextStyle(color: labelColor, fontSize: 10),
+      60,
+    );
   }
 
-  void _drawText(Canvas canvas, String text, Offset offset, TextStyle style, double maxWidth) {
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    TextStyle style,
+    double maxWidth,
+  ) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -579,7 +751,9 @@ class _DailyChartPainter extends CustomPainter {
   }
 
   static String _formatBytes(int bytes) {
-    if (bytes >= 1073741824) return '${(bytes / 1073741824).toStringAsFixed(1)}G';
+    if (bytes >= 1073741824) {
+      return '${(bytes / 1073741824).toStringAsFixed(1)}G';
+    }
     if (bytes >= 1048576) return '${(bytes / 1048576).toStringAsFixed(0)}M';
     if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)}K';
     return '${bytes}B';
@@ -600,6 +774,8 @@ class _SpeedChart extends StatelessWidget {
   Widget build(BuildContext context) {
     if (samples.isEmpty) return const SizedBox();
 
+    final cs = Theme.of(context).colorScheme;
+    final meow = Theme.of(context).extension<MeowColors>()!;
     int maxRate = 1024;
     for (final s in samples) {
       maxRate = max(maxRate, max(s.txRate, s.rxRate));
@@ -607,7 +783,14 @@ class _SpeedChart extends StatelessWidget {
 
     return CustomPaint(
       size: const Size(double.infinity, 200),
-      painter: _ChartPainter(samples: samples, maxRate: maxRate),
+      painter: _ChartPainter(
+        samples: samples,
+        maxRate: maxRate,
+        gridColor: cs.outlineVariant,
+        labelColor: cs.onSurfaceVariant,
+        uploadColor: meow.upload,
+        downloadColor: meow.download,
+      ),
     );
   }
 }
@@ -615,8 +798,19 @@ class _SpeedChart extends StatelessWidget {
 class _ChartPainter extends CustomPainter {
   final List<_TrafficSample> samples;
   final int maxRate;
+  final Color gridColor;
+  final Color labelColor;
+  final Color uploadColor;
+  final Color downloadColor;
 
-  _ChartPainter({required this.samples, required this.maxRate});
+  _ChartPainter({
+    required this.samples,
+    required this.maxRate,
+    required this.gridColor,
+    required this.labelColor,
+    required this.uploadColor,
+    required this.downloadColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -628,25 +822,58 @@ class _ChartPainter extends CustomPainter {
     final chartW = w - margin;
     final chartH = h - 24;
 
-    final gridPaint = Paint()..color = Colors.white10..strokeWidth = 0.5;
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 0.5;
     for (var i = 0; i <= 4; i++) {
       final y = (chartH / 4) * i;
       canvas.drawLine(Offset(margin, y), Offset(w, y), gridPaint);
     }
 
-    final labelStyle = TextStyle(color: Colors.white38, fontSize: 10, fontFeatures: const [FontFeature.tabularFigures()]);
+    final labelStyle = TextStyle(
+      color: labelColor,
+      fontSize: 10,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     for (var i = 0; i <= 4; i++) {
       final val = maxRate * (4 - i) / 4;
       final y = (chartH / 4) * i;
-      _drawText(canvas, _formatRate(val.toInt()), Offset(0, y - 6), labelStyle, margin - 4);
+      _drawText(
+        canvas,
+        _formatRate(val.toInt()),
+        Offset(0, y - 6),
+        labelStyle,
+        margin - 4,
+      );
     }
 
-    _drawLine(canvas, samples.map((s) => s.txRate).toList(), Colors.blue, margin, chartW, chartH);
-    _drawLine(canvas, samples.map((s) => s.rxRate).toList(), Colors.green, margin, chartW, chartH);
+    _drawLine(
+      canvas,
+      samples.map((s) => s.txRate).toList(),
+      uploadColor,
+      margin,
+      chartW,
+      chartH,
+    );
+    _drawLine(
+      canvas,
+      samples.map((s) => s.rxRate).toList(),
+      downloadColor,
+      margin,
+      chartW,
+      chartH,
+    );
     _drawLegend(canvas, size);
   }
 
-  void _drawLine(Canvas canvas, List<int> values, Color color, double margin, double chartW, double chartH) {
+  void _drawLine(
+    Canvas canvas,
+    List<int> values,
+    Color color,
+    double margin,
+    double chartW,
+    double chartH,
+  ) {
     if (values.length < 2) return;
 
     final fillPaint = Paint()
@@ -684,15 +911,39 @@ class _ChartPainter extends CustomPainter {
 
   void _drawLegend(Canvas canvas, Size size) {
     final y = size.height - 10;
-    canvas.drawCircle(Offset(size.width / 2 - 60, y), 4, Paint()..color = Colors.blue);
-    _drawText(canvas, 'Upload', Offset(size.width / 2 - 52, y - 6),
-        const TextStyle(color: Colors.white54, fontSize: 10), 50);
-    canvas.drawCircle(Offset(size.width / 2 + 20, y), 4, Paint()..color = Colors.green);
-    _drawText(canvas, 'Download', Offset(size.width / 2 + 28, y - 6),
-        const TextStyle(color: Colors.white54, fontSize: 10), 60);
+    canvas.drawCircle(
+      Offset(size.width / 2 - 60, y),
+      4,
+      Paint()..color = uploadColor,
+    );
+    _drawText(
+      canvas,
+      'Upload',
+      Offset(size.width / 2 - 52, y - 6),
+      TextStyle(color: labelColor, fontSize: 10),
+      50,
+    );
+    canvas.drawCircle(
+      Offset(size.width / 2 + 20, y),
+      4,
+      Paint()..color = downloadColor,
+    );
+    _drawText(
+      canvas,
+      'Download',
+      Offset(size.width / 2 + 28, y - 6),
+      TextStyle(color: labelColor, fontSize: 10),
+      60,
+    );
   }
 
-  void _drawText(Canvas canvas, String text, Offset offset, TextStyle style, double maxWidth) {
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    TextStyle style,
+    double maxWidth,
+  ) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -702,8 +953,12 @@ class _ChartPainter extends CustomPainter {
   }
 
   static String _formatRate(int bytesPerSec) {
-    if (bytesPerSec >= 1048576) return '${(bytesPerSec / 1048576).toStringAsFixed(1)}M';
-    if (bytesPerSec >= 1024) return '${(bytesPerSec / 1024).toStringAsFixed(0)}K';
+    if (bytesPerSec >= 1048576) {
+      return '${(bytesPerSec / 1048576).toStringAsFixed(1)}M';
+    }
+    if (bytesPerSec >= 1024) {
+      return '${(bytesPerSec / 1024).toStringAsFixed(0)}K';
+    }
     return '${bytesPerSec}B';
   }
 
