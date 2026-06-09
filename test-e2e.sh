@@ -279,6 +279,13 @@ try_dismiss_vpn_dialog() {
     info "  UI dump size: ${#ui_xml} bytes"
     cp /tmp/ui_dump.xml "$SCRIPT_DIR/ui_dump_vpn_dialog.xml" 2>/dev/null || true
 
+    local tap_line
+    tap_line=$(echo "$ui_xml" | tr '>' '\n' | grep -F 'resource-id="android:id/aerr_wait"' | head -1 || true)
+    if [[ -n "$tap_line" ]]; then
+        tap_bounds "$tap_line" "system ANR wait button"
+        return 1
+    fi
+
     # Only match buttons that belong to the VPN dialog (com.android.vpndialogs package)
     # Strategy 1: resource-id android:id/button1 (standard positive button)
     local ok_line
@@ -292,20 +299,24 @@ try_dismiss_vpn_dialog() {
     # No Strategy 3 — tapping arbitrary buttons is dangerous (can hit Flutter nav bar)
 
     if [[ -n "$ok_line" ]]; then
-        local ok_bounds
-        ok_bounds=$(echo "$ok_line" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' || true)
-        if [[ -n "$ok_bounds" ]]; then
-            local nums x1 y1 x2 y2
-            nums=$(echo "$ok_bounds" | grep -o '[0-9]*')
-            x1=$(echo "$nums" | sed -n '1p'); y1=$(echo "$nums" | sed -n '2p')
-            x2=$(echo "$nums" | sed -n '3p'); y2=$(echo "$nums" | sed -n '4p')
-            local cx=$(( (x1 + x2) / 2 )) cy=$(( (y1 + y2) / 2 ))
-            info "  Tapping VPN dialog button at ($cx, $cy)"
-            "$ADB" shell input tap "$cx" "$cy"
-            return 0
-        fi
+        tap_bounds "$ok_line" "VPN dialog button"
+        return 0
     fi
     return 1
+}
+
+tap_bounds() {
+    local line="$1"
+    local label="$2"
+    local bounds nums x1 y1 x2 y2 cx cy
+    bounds=$(echo "$line" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' || true)
+    [[ -n "$bounds" ]] || return 1
+    nums=$(echo "$bounds" | grep -o '[0-9]*')
+    x1=$(echo "$nums" | sed -n '1p'); y1=$(echo "$nums" | sed -n '2p')
+    x2=$(echo "$nums" | sed -n '3p'); y2=$(echo "$nums" | sed -n '4p')
+    cx=$(( (x1 + x2) / 2 )); cy=$(( (y1 + y2) / 2 ))
+    info "  Tapping $label at ($cx, $cy)"
+    "$ADB" shell input tap "$cx" "$cy"
 }
 
 # Wait for the VPN consent dialog to appear, then dismiss it
@@ -327,13 +338,6 @@ for i in $(seq 1 20); do
             info "  No dialog button found on attempt $attempt, retrying..."
             sleep 1
         done
-
-        # Fallback: blind tap at the "确定" button's known position on 1080x2400
-        if [[ "$VPN_ACCEPTED" != "true" ]]; then
-            info "  Trying blind tap at known button position..."
-            "$ADB" shell input tap 894 1494; sleep 3
-            VPN_ACCEPTED=true
-        fi
 
         screenshot "04_after_vpn_accept"
         break
