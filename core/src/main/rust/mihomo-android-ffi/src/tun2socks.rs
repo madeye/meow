@@ -27,12 +27,15 @@ use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::{mpsc, Semaphore};
+use tokio::task::JoinHandle;
 use tracing::{trace, warn};
 
 type UdpMsg = (Vec<u8>, SocketAddr, SocketAddr);
 type AnyIpPktFrame = Vec<u8>;
+type FlowTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
 
-static TUN2SOCKS_RUNNING: AtomicBool = AtomicBool::new(false);
+static TUN2SOCKS_ACTIVE: AtomicBool = AtomicBool::new(false);
+static TUN2SOCKS_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 const DNS_BURST_CAP: usize = 256;
 const DNS_TASK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -57,9 +60,13 @@ fn warn_capped(slot: &AtomicU64, msg: &str) {
 }
 
 pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
-    if TUN2SOCKS_RUNNING.swap(true, Ordering::SeqCst) {
+    if TUN2SOCKS_ACTIVE
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("tun2socks already running".into());
     }
+    TUN2SOCKS_STOP_REQUESTED.store(false, Ordering::SeqCst);
 
     logging::bridge_log(&format!("tun2socks starting: fd={}", fd));
 
@@ -73,7 +80,8 @@ pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
         if let Err(e) = run_tun2socks(fd).await {
             logging::bridge_log(&format!("tun2socks error: {}", e));
         }
-        TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
+        TUN2SOCKS_STOP_REQUESTED.store(false, Ordering::SeqCst);
+        TUN2SOCKS_ACTIVE.store(false, Ordering::SeqCst);
         logging::bridge_log("tun2socks exited");
     });
 
@@ -81,7 +89,7 @@ pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
 }
 
 pub fn stop() {
-    TUN2SOCKS_RUNNING.store(false, Ordering::SeqCst);
+    TUN2SOCKS_STOP_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +111,17 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
     let (stack_ingress_tx, mut stack_ingress_rx) = mpsc::channel::<AnyIpPktFrame>(256);
     let (egress_tx, mut egress_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let dns_sem = Arc::new(Semaphore::new(DNS_BURST_CAP));
+    let flow_tasks: FlowTasks = Arc::new(Mutex::new(Vec::new()));
 
-    let egress_tx_stack = egress_tx.clone();
-    let stack_handle = tokio::spawn(async move {
+    let egress_tx_lwip = egress_tx.clone();
+    let udp_reply_tx_lwip = udp_reply_tx.clone();
+    let reply_readers_lwip = reply_readers.clone();
+    let flow_tasks_lwip = flow_tasks.clone();
+    // lwip's Rust listener/socket wrappers are backed by C callbacks that
+    // mutate Rust queues and wakers through raw pointers. Keep all wrapper
+    // polling and UDP writes on one task; detached tasks only own accepted
+    // streams or proxy-side work.
+    let lwip_handle = tokio::spawn(async move {
         loop {
             tokio::select! {
                 pkt = stack_ingress_rx.recv() => {
@@ -121,7 +137,7 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                 }
                 pkt = stack.next() => {
                     match pkt {
-                        Some(Ok(frame)) => { let _ = egress_tx_stack.send(frame); }
+                        Some(Ok(frame)) => { let _ = egress_tx_lwip.send(frame); }
                         Some(Err(e)) => {
                             logging::bridge_log(&format!("stack recv error: {}", e));
                             break;
@@ -129,19 +145,46 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                         None => break,
                     }
                 }
+                accepted = tcp_listener.next() => {
+                    match accepted {
+                        Some((stream, local_addr, remote_addr)) => {
+                            if remote_addr.port() == 53 {
+                                drop(stream);
+                                continue;
+                            }
+                            let handle = tokio::spawn(async move {
+                                dispatch_tcp(stream, local_addr, remote_addr).await;
+                            });
+                            track_flow_task(&flow_tasks_lwip, handle);
+                        }
+                        None => break,
+                    }
+                }
+                udp_pkt = udp_read.next() => {
+                    match udp_pkt {
+                        Some((payload, src, dst)) => {
+                            let reply_tx = udp_reply_tx_lwip.clone();
+                            let readers = reply_readers_lwip.clone();
+                            let handle = tokio::spawn(async move {
+                                dispatch_udp(payload, src, dst, reply_tx, readers).await;
+                            });
+                            track_flow_task(&flow_tasks_lwip, handle);
+                        }
+                        None => break,
+                    }
+                }
+                msg = udp_reply_rx.recv() => {
+                    match msg {
+                        Some(msg) => {
+                            if let Err(e) = udp_write.send_to(&msg.0, &msg.1, &msg.2) {
+                                logging::bridge_log(&format!("tun2socks: UDP reply send error: {}", e));
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
             }
-        }
-    });
-
-    let tcp_accept_handle = tokio::spawn(async move {
-        while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
-            if remote_addr.port() == 53 {
-                drop(stream);
-                continue;
-            }
-            tokio::spawn(async move {
-                dispatch_tcp(stream, local_addr, remote_addr).await;
-            });
         }
     });
 
@@ -164,37 +207,12 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
         }
     });
 
-    // UDP reply writer: serialises replies from per-session readers into
-    // lwip's UdpWriteHalf.
-    let udp_writer_handle = tokio::spawn(async move {
-        let udp_write = udp_write;
-        while let Some(msg) = udp_reply_rx.recv().await {
-            if let Err(e) = udp_write.send_to(&msg.0, &msg.1, &msg.2) {
-                logging::bridge_log(&format!("tun2socks: UDP reply send error: {}", e));
-                break;
-            }
-        }
-    });
-
-    // UDP accept: non-DNS UDP flows dispatched via meow_tunnel::udp.
-    let udp_reply_tx_accept = udp_reply_tx.clone();
-    let reply_readers_accept = reply_readers.clone();
-    let udp_accept_handle = tokio::spawn(async move {
-        while let Some((payload, src, dst)) = udp_read.next().await {
-            let reply_tx = udp_reply_tx_accept.clone();
-            let readers = reply_readers_accept.clone();
-            tokio::spawn(async move {
-                dispatch_udp(payload, src, dst, reply_tx, readers).await;
-            });
-        }
-    });
-
     // TUN reader: reads raw IP packets, intercepts DNS pre-stack.
     let tun_reader_handle = tokio::spawn(async move {
         let mut read_buf = vec![0u8; 65535];
 
         loop {
-            if !TUN2SOCKS_RUNNING.load(Ordering::SeqCst) {
+            if TUN2SOCKS_STOP_REQUESTED.load(Ordering::SeqCst) {
                 break;
             }
 
@@ -297,15 +315,32 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
 
     let _ = tun_reader_handle.await;
 
-    stack_handle.abort();
-    tcp_accept_handle.abort();
-    udp_accept_handle.abort();
-    udp_writer_handle.abort();
-    tun_writer_handle.abort();
+    abort_flow_tasks(&flow_tasks).await;
     drop(udp_reply_tx);
+    let _ = lwip_handle.await;
+    abort_flow_tasks(&flow_tasks).await;
+    tun_writer_handle.abort();
+    let _ = tun_writer_handle.await;
 
     logging::bridge_log("tun2socks: exiting");
     Ok(())
+}
+
+fn track_flow_task(flow_tasks: &FlowTasks, handle: JoinHandle<()>) {
+    let mut tasks = flow_tasks.lock();
+    tasks.retain(|task| !task.is_finished());
+    tasks.push(handle);
+}
+
+async fn abort_flow_tasks(flow_tasks: &FlowTasks) {
+    let tasks = {
+        let mut tasks = flow_tasks.lock();
+        tasks.drain(..).collect::<Vec<_>>()
+    };
+    for task in tasks {
+        task.abort();
+        let _ = task.await;
+    }
 }
 
 // ---------------------------------------------------------------------------
