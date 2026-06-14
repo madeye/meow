@@ -46,6 +46,20 @@ platform :android do
     )
   end
 
+  desc "Upload AAB directly to production (full rollout)"
+  lane :production_rollout do |options|
+    upload_to_play_store(
+      track: "production",
+      release_status: "completed",
+      rollout: "1",
+      aab: "mobile/build/outputs/bundle/playRelease/mobile-playRelease.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: false
+    )
+  end
+
   desc "Update store listing metadata only"
   lane :metadata do
     upload_to_play_store(

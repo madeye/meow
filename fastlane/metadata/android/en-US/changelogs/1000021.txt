@@ -1,0 +1,2 @@
+- Add "Paste from clipboard" button to the subscription URL field, making it easy to import subscriptions on Android TV and other devices without paste support
+- Minor stability improvements
