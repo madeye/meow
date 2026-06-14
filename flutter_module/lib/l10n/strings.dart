@@ -41,6 +41,8 @@ class S {
   String deleteConfirm(String name) => 'Delete "$name"?';
   String get name => 'Name';
   String get subscriptionUrl => 'Subscription URL';
+  String get pasteFromClipboard => 'Paste from clipboard';
+  String get clipboardEmpty => 'Clipboard is empty';
   String get cancel => 'Cancel';
   String get save => 'Save';
   String get add => 'Add';
@@ -218,6 +220,10 @@ class _Zh extends S {
   String get name => '名称';
   @override
   String get subscriptionUrl => '订阅链接';
+  @override
+  String get pasteFromClipboard => '从剪贴板粘贴';
+  @override
+  String get clipboardEmpty => '剪贴板为空';
   @override
   String get cancel => '取消';
   @override

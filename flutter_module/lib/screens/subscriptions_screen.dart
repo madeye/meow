@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app.dart' show notifyProfileChanged;
 import '../l10n/strings.dart';
 import '../services/vpn_channel.dart';
@@ -342,6 +343,20 @@ class _SubscriptionDialogState extends State<_SubscriptionDialog> {
     super.dispose();
   }
 
+  Future<void> _pasteUrl() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim();
+    if (!mounted) return;
+    if (text == null || text.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(S.of(context).clipboardEmpty)));
+      return;
+    }
+    _urlCtrl.text = text;
+    _urlCtrl.selection =
+        TextSelection.collapsed(offset: _urlCtrl.text.length);
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -361,6 +376,11 @@ class _SubscriptionDialogState extends State<_SubscriptionDialog> {
             decoration: InputDecoration(
               labelText: s.subscriptionUrl,
               hintText: 'https://...',
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.content_paste),
+                tooltip: s.pasteFromClipboard,
+                onPressed: _pasteUrl,
+              ),
             ),
           ),
         ],
