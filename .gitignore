@@ -4,6 +4,10 @@ build/
 buildSrc/build/
 local.properties
 
+# Kotlin compiler caches
+.kotlin/
+buildSrc/.kotlin/
+
 # Rust
 core/src/main/rust/mihomo-android-ffi/target/
 
@@ -39,4 +43,9 @@ fastlane/play-store-key.json
 
 # E2E test artifacts
 screen_*.png
+e2e-logcat.log
+ui_dump*.xml
 /tmp/
+
+# Fastlane generated output
+fastlane/report.xml

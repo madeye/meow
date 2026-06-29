@@ -70,6 +70,8 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 - **protect.rs**: Implements `meow_common::SocketProtector` via a JNI shim around `VpnService.protect(int)`. Installed once in `nativeStartTun2Socks`; meow-rs invokes it for every outbound TCP/UDP fd (proxy adapters + the DNS resolver's default `SocketFactory`) before `connect()`/`bind()`.
 - **engine.rs**: `tunnel()` accessor — returns the running `Tunnel` handle so `tun2socks`, `dns_client`, and `china_dns` can dispatch flows through `meow_tunnel::tcp::handle_tcp` without re-implementing rule routing.
 - **doh_client.rs**: DNS-over-HTTPS via reqwest. Falls back to `1.1.1.1` and `8.8.8.8`.
+- **diagnostics.rs**: JNI-exposed native connectivity probes (`nativeTestDirectTcp`, UDP) used by the Settings diagnostics UI.
+- **logging.rs**: `android_logger` / tracing setup bridging Rust logs to logcat and the in-app log stream.
 
 ### Kotlin Core (`core/src/main/java/io/github/madeye/meow/`)
 
@@ -83,9 +85,9 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 
 - **app.dart**: MaterialApp with 4-tab NavigationBar (Home, Subscribe, Traffic, Settings). `profileChanged` ValueNotifier bridges subscription changes to home screen reload.
 - **services/vpn_channel.dart**: Singleton wrapping MethodChannel/EventChannel for VPN control, profile CRUD, traffic streams.
+- **services/mihomo_api.dart**: Typed REST/WebSocket client for the embedded mihomo external-controller (always `http://127.0.0.1:9090`, no override — see `MihomoInstance.kt`). Powers the connections/logs/rules/traffic live views. `services/traffic_history.dart` keeps a rolling traffic window.
 - **l10n/strings.dart**: Map-based i18n (English default, Chinese via `_Zh` subclass). Uses `S.of(context)` pattern.
-- **screens/home_screen.dart**: SliverAppBar with Switch toggle, proxy node list from selected profile's YAML, status card.
-- **screens/traffic_screen.dart**: Real-time speed chart (CustomPainter), session upload/download/total cards (blue/green/purple).
+- **screens/**: `home_screen.dart` (Switch toggle + proxy node list), `traffic_screen.dart` (speed chart + session cards), plus `connections_screen`, `logs_screen`, `rules_screen` (driven by `mihomo_api.dart`), `subscriptions_screen` + `yaml_editor_screen` (profile/YAML editing), `per_app_proxy_screen`, and `settings_screen`.
 
 ### Key Data Flow
 
@@ -98,9 +100,11 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 ```
 mobile → core, flutter
 core → rust (via rust-android-gradle cargo plugin)
-mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, HEAD-pinned)
-                   → netstack-smoltcp, jni, android_logger, reqwest, socket2
+mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.13.0)
+                   → netstack-smoltcp, lwip (custom rev), jni, android_logger, reqwest, socket2
 ```
+
+meow-rs crates are pinned by git **tag** in `Cargo.toml` — bumping the engine means changing the tag on every `meow-*` line. Enabled protocol/transport features: `anytls`, `ech-tls-tunnel` (config/proxy) and `tls,ws,ech,grpc,h2,httpupgrade` (transport). Supported proxy protocols: Shadowsocks (with built-in `simple-obfs` and `v2ray-plugin`), Trojan, AnyTLS, Direct.
 
 ## E2E Test Structure
 

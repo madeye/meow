@@ -11,10 +11,6 @@ class ServiceNotification(
     profileName: String,
     channelId: String,
 ) {
-    companion object {
-        private const val NOTIFICATION_ID = 1
-    }
-
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = service.getSystemService(NotificationManager::class.java)

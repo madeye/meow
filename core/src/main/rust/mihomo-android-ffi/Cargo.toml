@@ -45,7 +45,6 @@ android_logger = "0.14"
 # YAML / serialization
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
-serde_json = "1"
 
 # rustls is still needed by `start_engine_async` for the embedded mihomo
 # engine's outbound TLS (Trojan, etc.) — installs the ring crypto provider.
@@ -55,7 +54,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "logg
 libc = "0.2"
 anyhow = "1"
 nix = { version = "0.29", features = ["fs"] }
-socket2 = "0.5"
 
 # tun2socks
 lwip = "0.3"
@@ -63,12 +61,6 @@ lwip = "0.3"
 # Persistent DNS answer cache (single-writer KV at $HOME_DIR/doh-cache.redb;
 # filename retained for backward compatibility).
 redb = "2"
-
-# GeoIP CN check for the trust-china-dns split-horizon path.
-maxminddb = "0.27"
-ipnetwork = "0.21"
-ipnet = "2"
-iprange = "0.6"
 
 # JNI bridge
 jni = "0.21"

@@ -9,11 +9,4 @@ data class TrafficStats(
     var rxRate: Long = 0L,
     var txTotal: Long = 0L,
     var rxTotal: Long = 0L,
-) : Parcelable {
-    operator fun plus(other: TrafficStats) = TrafficStats(
-        txRate + other.txRate,
-        rxRate + other.rxRate,
-        txTotal + other.txTotal,
-        rxTotal + other.rxTotal,
-    )
-}
+) : Parcelable

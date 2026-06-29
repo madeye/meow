@@ -568,12 +568,6 @@ fn parse_dns_qtype(payload: &[u8]) -> Option<u16> {
 // ---------------------------------------------------------------------------
 
 struct ParsedUdp<'a> {
-    #[allow(dead_code)]
-    src_ip: [u8; 4],
-    #[allow(dead_code)]
-    src_port: u16,
-    #[allow(dead_code)]
-    dst_ip: [u8; 4],
     dst_port: u16,
     payload: &'a [u8],
 }
@@ -592,9 +586,6 @@ fn parse_udp_packet(ip_data: &[u8]) -> Option<ParsedUdp<'_>> {
     if ip_data.len() < ihl + 8 {
         return None;
     }
-    let src_ip = [ip_data[12], ip_data[13], ip_data[14], ip_data[15]];
-    let dst_ip = [ip_data[16], ip_data[17], ip_data[18], ip_data[19]];
-    let src_port = u16::from_be_bytes([ip_data[ihl], ip_data[ihl + 1]]);
     let dst_port = u16::from_be_bytes([ip_data[ihl + 2], ip_data[ihl + 3]]);
     let udp_len = u16::from_be_bytes([ip_data[ihl + 4], ip_data[ihl + 5]]) as usize;
     let start = ihl + 8;
@@ -603,9 +594,6 @@ fn parse_udp_packet(ip_data: &[u8]) -> Option<ParsedUdp<'_>> {
         return None;
     }
     Some(ParsedUdp {
-        src_ip,
-        src_port,
-        dst_ip,
         dst_port,
         payload: &ip_data[start..end],
     })

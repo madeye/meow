@@ -25,7 +25,6 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  cupertino_icons: ^1.0.8
   yaml: ^3.1.2
   http: ^1.2.0
   web_socket_channel: ^3.0.0
