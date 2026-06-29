@@ -134,6 +134,52 @@ fn install_tracing_subscriber() {
         .with_filter(LevelFilter::INFO);
         let _ = tracing_subscriber::registry().with(log_layer).try_init();
     });
+    spawn_log_buffer_drainer();
+}
+
+// ---------------------------------------------------------------------------
+// In-memory log ring buffer for the Kotlin `getLogs` MethodChannel poll
+//
+// The logs screen polls every couple of seconds and appends whatever it gets,
+// so reads have drain semantics: a background task accumulates formatted lines
+// from the same broadcast channel the API `/logs` endpoint uses, and
+// `nativeGetLogs` returns + clears the pending lines. The buffer is capped so
+// it stays bounded while the screen is closed (oldest lines dropped first).
+// ---------------------------------------------------------------------------
+
+const LOG_BUFFER_CAP: usize = 2000;
+
+fn log_buffer() -> &'static Mutex<std::collections::VecDeque<String>> {
+    static BUF: OnceLock<Mutex<std::collections::VecDeque<String>>> = OnceLock::new();
+    BUF.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
+}
+
+fn spawn_log_buffer_drainer() {
+    static SPAWNED: Once = Once::new();
+    SPAWNED.call_once(|| {
+        let mut rx = log_broadcast_tx().subscribe();
+        get_runtime().spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(msg) => {
+                        let line = format!("{} {}", msg.level.as_str().to_uppercase(), msg.payload);
+                        let mut buf = log_buffer().lock();
+                        buf.push_back(line);
+                        while buf.len() > LOG_BUFFER_CAP {
+                            buf.pop_front();
+                        }
+                    }
+                    // Reader fell behind the 128-slot channel; skip the gap.
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    });
+}
+
+fn drain_log_buffer() -> Vec<String> {
+    log_buffer().lock().drain(..).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +366,20 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetHomeD
     } else {
         Some(dir_str)
     };
+}
+
+/// Drains and returns the buffered engine log lines as a single newline-joined
+/// string (empty if none pending). Kotlin splits it back into a list for the
+/// logs screen. Safe to call whether or not the engine is running.
+#[no_mangle]
+pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLogs(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let joined = drain_log_buffer().join("\n");
+    env.new_string(joined)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[no_mangle]

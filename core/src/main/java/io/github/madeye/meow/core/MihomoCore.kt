@@ -17,6 +17,7 @@ object MihomoCore {
     external fun nativeValidateConfig(yaml: String): Int
     external fun nativeGetLastError(): String
     external fun nativeVersion(): String
+    external fun nativeGetLogs(): String
     external fun nativeTestDirectTcp(host: String, port: Int): String
     external fun nativeTestDnsResolver(dnsAddr: String): String
 }
