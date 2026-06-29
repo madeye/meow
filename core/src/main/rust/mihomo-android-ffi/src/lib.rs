@@ -1,7 +1,7 @@
 //! Rust half of the meow-android native stack — JNI surface for the Kotlin
 //! VPN service.
 //!
-//! Embeds the meow-rs proxy engine (pinned to a HEAD revision) and the
+//! Embeds the meow-rs proxy engine (pinned to a release tag) and the
 //! tun2socks layer in one cdylib. Outbound socket protection is wired
 //! through upstream's `meow_common::SocketProtector` hook — see
 //! `protect.rs` — so no proxy-side patches are needed. Every netstack TCP flow is dispatched
@@ -317,6 +317,9 @@ async fn start_engine_async(
             proxy_providers,
             rule_providers,
             listeners_for_api,
+            // No external web UI dashboard — the Flutter app talks to the API
+            // directly (added in meow-rs v0.15.1, #223).
+            None,
         );
         handles.push(tokio::spawn(async move {
             if let Err(e) = api_server.run().await {
