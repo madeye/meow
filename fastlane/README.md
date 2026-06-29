@@ -47,6 +47,14 @@ Deploy to Google Play open testing track
 
 Promote internal to production
 
+### android production_rollout
+
+```sh
+[bundle exec] fastlane android production_rollout
+```
+
+Upload AAB directly to production (full rollout)
+
 ### android metadata
 
 ```sh
