@@ -100,7 +100,7 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 ```
 mobile → core, flutter
 core → rust (via rust-android-gradle cargo plugin)
-mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.15.1)
+mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.16.0)
                    → netstack-smoltcp, lwip (custom rev), jni, android_logger, reqwest, socket2
 ```
 

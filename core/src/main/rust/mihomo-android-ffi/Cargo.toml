@@ -18,13 +18,13 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.15.1", features = ["anytls", "ech-tls-tunnel"] }
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0", features = ["anytls", "ech-tls-tunnel"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.16.0", features = ["anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
@@ -92,14 +92,3 @@ mimalloc = { version = "0.1", default-features = false }
 # land in an upstream lwip release.
 [patch.crates-io]
 lwip = { git = "https://github.com/madeye/lwip", rev = "dab00c540cf0606fee14ddd99cfa6ec79d33681d" }
-
-# crates.io `anytls-rs` 0.5.4 is jxo-me's upstream crate, which lacks the
-# `Stream::close()` FIN-frame method that meow-proxy v0.15.x calls (the
-# fd/stream-leak fix for issue #201 item 4, madeye/anytls-rs#1). meow-rs's
-# manifest assumes 0.5.4 carries it, but that change only lives in madeye's
-# fork — which is published to crates.io under a name jxo-me owns, so meow-rs
-# can't depend on it directly. We don't publish, so point anytls-rs at the
-# fork's matching tag. Drop once meow-rs depends on a crate that actually
-# carries `close()`. Pinned to the fork HEAD that merged the fix
-# (madeye/anytls-rs#1) — the v0.5.4 tag predates it and still lacks `close()`.
-anytls-rs = { git = "https://github.com/madeye/anytls-rs", rev = "e6134889d3abbfaa2cb7439969dbda2ef6930611" }
