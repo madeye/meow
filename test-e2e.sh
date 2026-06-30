@@ -172,8 +172,27 @@ LOGCAT_PID=$!
 # Step 5: Install APK and tools
 ensure_emulator
 info "Step 5: Installing debug APK ..."
-"$ADB" uninstall "$PKG" 2>/dev/null || true
-"$ADB" install -g "$APK" || fail "APK install failed"
+# adb on CI emulators intermittently drops its daemon ("Unable to connect to
+# adb daemon on port: 5037") or returns DELETE_FAILED_INTERNAL_ERROR mid-run,
+# which previously failed the whole suite on the very first install. Retry a
+# few times, bouncing the adb server and re-confirming boot between attempts.
+install_apk() {
+    local attempt
+    for attempt in 1 2 3; do
+        "$ADB" uninstall "$PKG" >/dev/null 2>&1 || true
+        if "$ADB" install -g "$APK"; then
+            return 0
+        fi
+        info "APK install attempt $attempt failed; restarting adb and retrying ..."
+        "$ADB" kill-server >/dev/null 2>&1 || true
+        "$ADB" start-server >/dev/null 2>&1 || true
+        "$ADB" wait-for-device
+        wait_for_boot
+        sleep 3
+    done
+    return 1
+}
+install_apk || fail "APK install failed"
 info "APK installed."
 
 # No external binaries needed — tests use nc (netcat) built into Android
