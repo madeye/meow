@@ -1,0 +1,3 @@
+- Updated core networking engine to meow-rs v0.16.0, adding support for more proxy protocols (Snell, Hysteria2, VLESS Reality, SOCKS5 UDP) and important security fixes
+- The Logs screen now shows live engine logs
+- Stability and performance improvements
