@@ -1,0 +1,4 @@
+- Home screen now lists proxy groups from the running engine — pick a node in each group and see live latency, with selection handled over the engine's REST API
+- Import a config from a file, and export any subscription's config to a file
+- Fixed config validation failing on GeoIP rules, and a wrong "Updated" date shown on subscriptions
+- Stability and performance improvements
