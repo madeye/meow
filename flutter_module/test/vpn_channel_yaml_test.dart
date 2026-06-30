@@ -54,6 +54,46 @@ void main() {
     });
   });
 
+  group('VpnChannel.importConfig', () {
+    test('returns the imported profile from the native map', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'importConfig');
+        return {'id': 5, 'name': 'Imported', 'yamlContent': 'a: 1\n'};
+      });
+
+      final profile = await VpnChannel.instance.importConfig();
+      expect(profile, isNotNull);
+      expect(profile!.id, 5);
+      expect(profile.name, 'Imported');
+      expect(profile.yamlContent, 'a: 1\n');
+    });
+
+    test('returns null when the user cancels the picker', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async => null);
+      expect(await VpnChannel.instance.importConfig(), isNull);
+    });
+  });
+
+  group('VpnChannel.exportConfig', () {
+    test('passes name and content, returns true when written', () async {
+      MethodCall? captured;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        captured = call;
+        return true;
+      });
+
+      final ok = await VpnChannel.instance.exportConfig('JP', 'proxies: []\n');
+      expect(ok, isTrue);
+      expect(captured!.method, 'exportConfig');
+      expect(captured!.arguments, {'name': 'JP', 'yamlContent': 'proxies: []\n'});
+    });
+
+    test('returns false when the user cancels', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async => false);
+      expect(await VpnChannel.instance.exportConfig('x', 'y'), isFalse);
+    });
+  });
+
   group('VpnChannel.revertProfileYaml', () {
     test('returns reverted yaml from native side', () async {
       messenger.setMockMethodCallHandler(channel, (call) async {

@@ -54,6 +54,13 @@ class S {
   String refreshFailed(String err) => 'Refresh failed: $err';
   String get proxies => 'proxies';
   String get editYaml => 'Edit YAML';
+  String get addFromUrl => 'Add from URL';
+  String get importFromFile => 'Import from file';
+  String get export => 'Export';
+  String configImported(String name) => 'Imported "$name"';
+  String importFailed(String err) => 'Import failed: $err';
+  String get exportSaved => 'Config exported';
+  String exportFailed(String err) => 'Export failed: $err';
   String get yamlValid => 'Valid YAML';
   String yamlInvalid(int line, int col, String msg) =>
       'Line $line, Col $col: $msg';
@@ -247,6 +254,20 @@ class _Zh extends S {
   String get proxies => '个节点';
   @override
   String get editYaml => '编辑 YAML';
+  @override
+  String get addFromUrl => '从链接添加';
+  @override
+  String get importFromFile => '从文件导入';
+  @override
+  String get export => '导出';
+  @override
+  String configImported(String name) => '已导入 "$name"';
+  @override
+  String importFailed(String err) => '导入失败：$err';
+  @override
+  String get exportSaved => '配置已导出';
+  @override
+  String exportFailed(String err) => '导出失败：$err';
   @override
   String get yamlValid => 'YAML 格式正确';
   @override

@@ -76,6 +76,26 @@ class VpnChannel {
   Future<String?> validateConfig(String yamlContent) =>
       _method.invokeMethod<String>('validateConfig', {'yamlContent': yamlContent});
 
+  /// Open the system file picker and import the chosen YAML as a new local
+  /// profile (validated by meow-rs on the native side). Returns the created
+  /// profile, or `null` if the user cancelled. Throws [PlatformException] if
+  /// the file can't be read or the config is invalid.
+  Future<ClashProfile?> importConfig() async {
+    final map = await _method.invokeMethod<Map>('importConfig');
+    return map != null ? ClashProfile.fromMap(map) : null;
+  }
+
+  /// Save [yamlContent] to a user-chosen file via the system "create document"
+  /// picker, suggesting `<name>.yaml`. Returns `true` once written, `false` if
+  /// the user cancelled.
+  Future<bool> exportConfig(String name, String yamlContent) async {
+    final ok = await _method.invokeMethod<bool>(
+      'exportConfig',
+      {'name': name, 'yamlContent': yamlContent},
+    );
+    return ok ?? false;
+  }
+
   Future<String> revertProfileYaml(int id) async {
     final result = await _method.invokeMethod<String>('revertProfileYaml', {'id': id});
     return result ?? '';

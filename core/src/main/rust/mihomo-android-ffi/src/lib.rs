@@ -364,11 +364,20 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetHomeD
 ) {
     let dir_str: String = env.get_string(&dir).map(|s| s.into()).unwrap_or_default();
     logging::bridge_log(&format!("nativeSetHomeDir: {}", dir_str));
-    *HOME_DIR.lock() = if dir_str.is_empty() {
-        None
+    if dir_str.is_empty() {
+        *HOME_DIR.lock() = None;
     } else {
-        Some(dir_str)
-    };
+        // meow-config resolves geodata at `$XDG_CONFIG_HOME/meow/Country.mmdb`.
+        // Our home dir is `.../no_backup/meow`, so XDG_CONFIG_HOME is its
+        // parent. Set it here (not only in start_engine) so config validation
+        // — used by the YAML editor and config import before any VPN start —
+        // can load the bundled GeoIP DB instead of failing on the default
+        // relative `./meow/Country.mmdb` path.
+        if let Some(parent) = std::path::Path::new(&dir_str).parent() {
+            std::env::set_var("XDG_CONFIG_HOME", parent);
+        }
+        *HOME_DIR.lock() = Some(dir_str);
+    }
 }
 
 /// Drains and returns the buffered engine log lines as a single newline-joined

@@ -24,6 +24,20 @@ object SubscriptionService {
         fetched.copy(id = id)
     }
 
+    /// Create a profile from a YAML string the user imported from a file. It
+    /// has no source URL, so refresh-from-URL skips it (see [refreshAll]).
+    suspend fun addLocal(name: String, yamlContent: String): ClashProfile = withContext(Dispatchers.IO) {
+        val profile = ClashProfile(
+            name = name,
+            url = "",
+            yamlContent = yamlContent,
+            yamlBackup = yamlContent,
+            lastUpdated = System.currentTimeMillis(),
+        )
+        val id = PrivateDatabase.profileDao.insert(profile)
+        profile.copy(id = id)
+    }
+
     suspend fun refreshAll() = withContext(Dispatchers.IO) {
         val profiles = PrivateDatabase.profileDao.getAll().filter { it.url.isNotEmpty() }
         for (profile in profiles) {

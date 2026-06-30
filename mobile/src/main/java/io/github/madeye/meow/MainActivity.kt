@@ -32,6 +32,8 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
         private const val STATE_CHANNEL = "io.github.madeye.meow/vpn_state"
         private const val TRAFFIC_CHANNEL = "io.github.madeye.meow/traffic"
         private const val REQUEST_VPN = 1
+        private const val REQUEST_IMPORT_CONFIG = 2
+        private const val REQUEST_EXPORT_CONFIG = 3
     }
 
     private val analytics by lazy { FirebaseAnalytics.getInstance(this) }
@@ -41,6 +43,11 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     private var trafficEventSink: EventChannel.EventSink? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var pendingConnect = false
+    // SAF file-picker round-trip state. Only one config import/export can be
+    // in flight at a time; the pending channel Result is resolved from
+    // onActivityResult once the user picks (or cancels) a file.
+    private var pendingFileResult: MethodChannel.Result? = null
+    private var pendingExportContent: String? = null
     private var lastTrafficTx = 0L
     private var lastTrafficRx = 0L
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -49,6 +56,17 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         connection.connect(this, this)
+
+        // Seed GeoIP DBs + register the engine home dir up front so config
+        // validation (YAML editor, config import) works before the first VPN
+        // start. Idempotent; off the main thread to avoid first-run jank.
+        scope.launch(Dispatchers.IO) {
+            try {
+                io.github.madeye.meow.bg.MihomoInstance.prepareEngineHome(applicationContext)
+            } catch (e: Exception) {
+                Timber.w(e, "prepareEngineHome failed")
+            }
+        }
 
         if (intent?.getBooleanExtra("auto_connect", false) == true) {
             pendingConnect = true
@@ -157,6 +175,48 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         val core = io.github.madeye.meow.core.MihomoCore
                         val code = core.nativeValidateConfig(yaml)
                         result.success(if (code == 0) null else core.nativeGetLastError())
+                    }
+                    "importConfig" -> {
+                        // Open the system file picker; the chosen YAML becomes a
+                        // local profile (parsed/validated by meow-rs, not Dart).
+                        if (pendingFileResult != null) {
+                            result.error("BUSY", "a file operation is already in progress", null)
+                        } else {
+                            pendingFileResult = result
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                            }
+                            try {
+                                startActivityForResult(intent, REQUEST_IMPORT_CONFIG)
+                            } catch (e: Exception) {
+                                pendingFileResult = null
+                                result.error("NO_PICKER", e.message, null)
+                            }
+                        }
+                    }
+                    "exportConfig" -> {
+                        // Save a profile's YAML to a user-chosen file via SAF.
+                        if (pendingFileResult != null) {
+                            result.error("BUSY", "a file operation is already in progress", null)
+                        } else {
+                            val name = call.argument<String>("name") ?: "config"
+                            pendingExportContent = call.argument<String>("yamlContent") ?: ""
+                            pendingFileResult = result
+                            val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "application/x-yaml"
+                                putExtra(Intent.EXTRA_TITLE, "$safeName.yaml")
+                            }
+                            try {
+                                startActivityForResult(intent, REQUEST_EXPORT_CONFIG)
+                            } catch (e: Exception) {
+                                pendingFileResult = null
+                                pendingExportContent = null
+                                result.error("NO_PICKER", e.message, null)
+                            }
+                        }
                     }
                     "revertProfileYaml" -> {
                         val id = call.argument<Int>("id")?.toLong() ?: 0L
@@ -332,10 +392,91 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     @Deprecated("Use Activity Result API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_VPN && resultCode == RESULT_OK) {
-            startVpn()
+        when (requestCode) {
+            REQUEST_VPN -> {
+                if (resultCode == RESULT_OK) startVpn()
+                pendingConnect = false
+            }
+            REQUEST_IMPORT_CONFIG -> handleImportResult(resultCode, data?.data)
+            REQUEST_EXPORT_CONFIG -> handleExportResult(resultCode, data?.data)
         }
-        pendingConnect = false
+    }
+
+    private fun handleImportResult(resultCode: Int, uri: android.net.Uri?) {
+        val result = pendingFileResult ?: return
+        pendingFileResult = null
+        if (resultCode != RESULT_OK || uri == null) {
+            result.success(null) // user cancelled
+            return
+        }
+        scope.launch {
+            try {
+                val profile = withContext(Dispatchers.IO) {
+                    val content = contentResolver.openInputStream(uri)?.bufferedReader()
+                        ?.use { it.readText() }
+                        ?: throw java.io.IOException("could not read file")
+                    // Seed GeoIP DBs + set the home dir so meow-rs can validate
+                    // configs that use GEOIP/GEOSITE rules even with the VPN off.
+                    io.github.madeye.meow.bg.MihomoInstance.prepareEngineHome(applicationContext)
+                    Timber.d("import: read ${content.length} chars from $uri, validating")
+                    val core = io.github.madeye.meow.core.MihomoCore
+                    if (core.nativeValidateConfig(content) != 0) {
+                        throw IllegalArgumentException(core.nativeGetLastError())
+                    }
+                    SubscriptionService.addLocal(displayName(uri), content)
+                }
+                Timber.i("import: created profile '${profile.name}' (id=${profile.id})")
+                analytics.logEvent("config_import") {}
+                result.success(profile.toFlutterMap())
+            } catch (e: IllegalArgumentException) {
+                Timber.e(e, "import: config rejected by meow-rs")
+                result.error("INVALID_CONFIG", e.message, null)
+            } catch (e: Exception) {
+                Timber.e(e, "import: failed")
+                result.error("IMPORT_ERROR", e.message, null)
+            }
+        }
+    }
+
+    private fun handleExportResult(resultCode: Int, uri: android.net.Uri?) {
+        val result = pendingFileResult ?: return
+        val content = pendingExportContent ?: ""
+        pendingFileResult = null
+        pendingExportContent = null
+        if (resultCode != RESULT_OK || uri == null) {
+            result.success(false) // user cancelled
+            return
+        }
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    contentResolver.openOutputStream(uri)?.bufferedWriter()
+                        ?.use { it.write(content) }
+                        ?: throw java.io.IOException("could not open file for writing")
+                }
+                Timber.i("export: wrote ${content.length} chars to $uri")
+                analytics.logEvent("config_export") {}
+                result.success(true)
+            } catch (e: Exception) {
+                Timber.e(e, "export: failed")
+                result.error("EXPORT_ERROR", e.message, null)
+            }
+        }
+    }
+
+    /// Best-effort profile name from a picked document: the file's display
+    /// name without extension, falling back to "Imported".
+    private fun displayName(uri: android.net.Uri): String {
+        var name: String? = null
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) name = cursor.getString(idx)
+            }
+        } catch (_: Exception) {
+        }
+        val base = name?.substringBeforeLast('.')?.trim().orEmpty()
+        return base.ifEmpty { "Imported" }
     }
 
     override fun onDestroy() {
@@ -398,9 +539,13 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
         "url" to url,
         "yamlContent" to yamlContent,
         "selected" to selected,
-        "lastUpdated" to lastUpdated.toInt(),
-        "tx" to tx.toInt(),
-        "rx" to rx.toInt(),
+        // lastUpdated/tx/rx are epoch-millis and byte counters — Longs that
+        // overflow a 32-bit Int (e.g. millis truncated to garbage produced the
+        // "Updated: 2013-…" bug). Send them as full 64-bit Longs; the channel
+        // codec maps Kotlin Long → Dart int.
+        "lastUpdated" to lastUpdated,
+        "tx" to tx,
+        "rx" to rx,
         "selectedProxy" to selectedProxy,
         "yamlBackup" to yamlBackup,
     )

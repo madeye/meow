@@ -68,6 +68,35 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     }
   }
 
+  Future<void> _importConfig() async {
+    final s = S.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final profile = await _vpn.importConfig();
+      if (profile == null) return; // cancelled
+      await _load(notify: true);
+      messenger.showSnackBar(
+        SnackBar(content: Text(s.configImported(profile.name))),
+      );
+    } catch (e) {
+      final msg = e is PlatformException ? (e.message ?? e.code) : e.toString();
+      messenger.showSnackBar(SnackBar(content: Text(s.importFailed(msg))));
+    }
+  }
+
+  Future<void> _exportConfig(ClashProfile profile) async {
+    final s = S.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final ok = await _vpn.exportConfig(profile.name, profile.yamlContent);
+      if (!ok) return; // cancelled
+      messenger.showSnackBar(SnackBar(content: Text(s.exportSaved)));
+    } catch (e) {
+      final msg = e is PlatformException ? (e.message ?? e.code) : e.toString();
+      messenger.showSnackBar(SnackBar(content: Text(s.exportFailed(msg))));
+    }
+  }
+
   Future<void> _editSubscription(ClashProfile profile) async {
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -154,7 +183,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               await _load(notify: true);
             },
           ),
-          IconButton(icon: const Icon(Icons.add), onPressed: _addSubscription),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add),
+            onSelected: (v) {
+              switch (v) {
+                case 'url': _addSubscription();
+                case 'file': _importConfig();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'url',
+                child: ListTile(
+                  leading: const Icon(Icons.link),
+                  title: Text(s.addFromUrl),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'file',
+                child: ListTile(
+                  leading: const Icon(Icons.file_open_outlined),
+                  title: Text(s.importFromFile),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: _loading
@@ -196,6 +251,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       onDelete: () => _deleteSubscription(_profiles[i]),
                       onRefresh: () => _refreshSubscription(_profiles[i]),
                       onEditYaml: () => _editYaml(_profiles[i]),
+                      onExport: () => _exportConfig(_profiles[i]),
                     ),
                   ),
                 ),
@@ -210,6 +266,7 @@ class _ProfileTile extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onRefresh;
   final VoidCallback onEditYaml;
+  final VoidCallback onExport;
 
   const _ProfileTile({
     required this.profile,
@@ -218,6 +275,7 @@ class _ProfileTile extends StatelessWidget {
     required this.onDelete,
     required this.onRefresh,
     required this.onEditYaml,
+    required this.onExport,
   });
 
   @override
@@ -225,7 +283,7 @@ class _ProfileTile extends StatelessWidget {
     final s = S.of(context);
     final p = profile;
     final updated = p.lastUpdated > 0
-        ? DateTime.fromMillisecondsSinceEpoch(p.lastUpdated * 1000)
+        ? DateTime.fromMillisecondsSinceEpoch(p.lastUpdated)
         : null;
     final cs = Theme.of(context).colorScheme;
 
@@ -259,6 +317,7 @@ class _ProfileTile extends StatelessWidget {
               case 'select': onSelect();
               case 'edit': onEdit();
               case 'editYaml': onEditYaml();
+              case 'export': onExport();
               case 'refresh': onRefresh();
               case 'delete': onDelete();
             }
@@ -269,6 +328,8 @@ class _ProfileTile extends StatelessWidget {
             PopupMenuItem(value: 'edit', child: Text(s.edit)),
             if (p.yamlContent.isNotEmpty)
               PopupMenuItem(value: 'editYaml', child: Text(s.editYaml)),
+            if (p.yamlContent.isNotEmpty)
+              PopupMenuItem(value: 'export', child: Text(s.export)),
             PopupMenuItem(value: 'refresh', child: Text(s.refresh)),
             PopupMenuItem(value: 'delete', child: Text(s.delete)),
           ],

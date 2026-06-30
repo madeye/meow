@@ -1,5 +1,7 @@
 package io.github.madeye.meow.bg
 
+import android.content.Context
+import io.github.madeye.meow.Core
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.core.MihomoCore
 import io.github.madeye.meow.database.ClashProfile
@@ -8,6 +10,50 @@ import java.io.File
 
 class MihomoInstance(val profile: ClashProfile) {
     val profileName: String get() = profile.name
+
+    companion object {
+        /// The engine home dir (`.../no_backup/meow`). meow-rs resolves
+        /// geodata at `$XDG_CONFIG_HOME/meow/Country.mmdb`, i.e. relative to
+        /// this dir's parent.
+        fun homeDir(context: Context): File =
+            File(Core.deviceStorage.noBackupFilesDir, "meow").apply { mkdirs() }
+
+        /// Seed bundled GeoX databases and register the home dir with meow-rs
+        /// (which also sets `XDG_CONFIG_HOME`). Idempotent and cheap on repeat
+        /// calls. Needed before [MihomoCore.nativeValidateConfig] so config
+        /// validation (YAML editor, config import) can load the GeoIP DB even
+        /// when the VPN has never been started this process.
+        fun prepareEngineHome(context: Context): File {
+            val dir = homeDir(context)
+            copyGeoxAssets(context, dir)
+            MihomoCore.nativeSetHomeDir(dir.absolutePath)
+            return dir
+        }
+
+        // Copy bundled GeoX databases from APK assets into the engine home
+        // dir. Skips files that already exist (cached from a prior start).
+        // Asset names follow the upstream release naming; targets follow
+        // meow-rs's discovery names (`Country.mmdb` with capital C, see
+        // meow_config::default_geoip_path).
+        private fun copyGeoxAssets(context: Context, configDir: File) {
+            val files = listOf(
+                "country.mmdb" to "Country.mmdb",
+                "GeoLite2-ASN.mmdb" to "GeoLite2-ASN.mmdb",
+            )
+            for ((assetName, targetName) in files) {
+                val target = File(configDir, targetName)
+                if (target.exists() && target.length() > 0) continue
+                try {
+                    context.assets.open("geox/$assetName").use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    Timber.d("MihomoInstance: seeded $targetName from assets (${target.length()} bytes)")
+                } catch (e: Exception) {
+                    Timber.w(e, "MihomoInstance: failed to seed $targetName from assets")
+                }
+            }
+        }
+    }
 
     private var prevTx: Long = 0
     private var prevRx: Long = 0
@@ -20,6 +66,8 @@ class MihomoInstance(val profile: ClashProfile) {
         // unreliable on censored / metered links. APK assets are populated
         // at build time by the `:core:downloadGeoxAssets` Gradle task.
         copyGeoxAssets(vpnService, configDir)
+        // Note: nativeSetHomeDir is also called below; prepareEngineHome and
+        // this start() path share copyGeoxAssets via the companion object.
 
         val configFile = File(configDir, "config.yaml")
         // Only strip the app-managed `subscriptions:` block. Listener ports,
@@ -35,30 +83,6 @@ class MihomoInstance(val profile: ClashProfile) {
             throw RuntimeException("Failed to start engine: ${MihomoCore.nativeGetLastError()}")
         }
         Timber.d("MihomoInstance: engine started")
-    }
-
-    // Copy bundled GeoX databases from APK assets into the engine home dir.
-    // Skips files that already exist (cached from a prior start). Asset
-    // names follow the upstream release naming; targets follow meow-rs's
-    // discovery names (`Country.mmdb` with capital C, see
-    // meow_config::default_geoip_path).
-    private fun copyGeoxAssets(context: android.content.Context, configDir: File) {
-        val files = listOf(
-            "country.mmdb" to "Country.mmdb",
-            "GeoLite2-ASN.mmdb" to "GeoLite2-ASN.mmdb",
-        )
-        for ((assetName, targetName) in files) {
-            val target = File(configDir, targetName)
-            if (target.exists() && target.length() > 0) continue
-            try {
-                context.assets.open("geox/$assetName").use { input ->
-                    target.outputStream().use { output -> input.copyTo(output) }
-                }
-                Timber.d("MihomoInstance: seeded $targetName from assets (${target.length()} bytes)")
-            } catch (e: Exception) {
-                Timber.w(e, "MihomoInstance: failed to seed $targetName from assets")
-            }
-        }
     }
 
     fun startTun2Socks(vpnService: android.net.VpnService, fd: Int) {
