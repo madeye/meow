@@ -150,6 +150,14 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         PrivateDatabase.profileDao.updateYamlContent(id, yaml)
                         result.success(null)
                     }
+                    "validateConfig" -> {
+                        // Config is parsed/checked by meow-rs, never in Dart.
+                        // Returns null when valid, else the engine's error string.
+                        val yaml = call.argument<String>("yamlContent") ?: ""
+                        val core = io.github.madeye.meow.core.MihomoCore
+                        val code = core.nativeValidateConfig(yaml)
+                        result.success(if (code == 0) null else core.nativeGetLastError())
+                    }
                     "revertProfileYaml" -> {
                         val id = call.argument<Int>("id")?.toLong() ?: 0L
                         analytics.logEvent("profile_yaml_revert") {}

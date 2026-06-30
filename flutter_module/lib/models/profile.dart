@@ -70,26 +70,4 @@ class ClashProfile {
       };
 
   bool get hasBackup => yamlBackup.isNotEmpty && yamlBackup != yamlContent;
-
-  /// Parse proxy names from the YAML content
-  List<String> get proxyNames {
-    final names = <String>[];
-    final lines = yamlContent.split('\n');
-    var inProxies = false;
-    for (final line in lines) {
-      if (line.trim() == 'proxies:') {
-        inProxies = true;
-        continue;
-      }
-      if (inProxies) {
-        if (line.startsWith('  - name:') || line.startsWith('  - {name:')) {
-          final match = RegExp(r'name:\s*(.+?)(?:,|\s*$)').firstMatch(line);
-          if (match != null) names.add(match.group(1)!.trim());
-        } else if (!line.startsWith('  ') && !line.startsWith('    ') && line.trim().isNotEmpty) {
-          inProxies = false;
-        }
-      }
-    }
-    return names;
-  }
 }

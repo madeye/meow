@@ -203,7 +203,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 }
 
-class _ProfileTile extends StatefulWidget {
+class _ProfileTile extends StatelessWidget {
   final ClashProfile profile;
   final VoidCallback onSelect;
   final VoidCallback onEdit;
@@ -221,95 +221,59 @@ class _ProfileTile extends StatefulWidget {
   });
 
   @override
-  State<_ProfileTile> createState() => _ProfileTileState();
-}
-
-class _ProfileTileState extends State<_ProfileTile> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final p = widget.profile;
-    final proxyNames = p.proxyNames;
+    final p = profile;
     final updated = p.lastUpdated > 0
         ? DateTime.fromMillisecondsSinceEpoch(p.lastUpdated * 1000)
         : null;
     final cs = Theme.of(context).colorScheme;
 
+    // The proxy/group inventory is no longer derived by parsing YAML in Dart;
+    // it's surfaced live on the Home tab from the engine REST API. This tile
+    // only manages the subscription itself (select / edit / refresh / delete).
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Column(
-        children: [
-          ListTile(
-            leading: Icon(
-              p.selected ? Icons.check_circle : Icons.circle_outlined,
-              color: p.selected
-                  ? cs.primary
-                  : cs.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (p.url.isNotEmpty)
-                  Text(p.url, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                if (updated != null)
-                  Text('Updated: ${updated.toLocal().toString().substring(0, 16)}',
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                Text('${proxyNames.length} ${s.proxies}',
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (proxyNames.isNotEmpty)
-                  IconButton(
-                    icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-                    onPressed: () => setState(() => _expanded = !_expanded),
-                  ),
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    switch (v) {
-                      case 'select': widget.onSelect();
-                      case 'edit': widget.onEdit();
-                      case 'editYaml': widget.onEditYaml();
-                      case 'refresh': widget.onRefresh();
-                      case 'delete': widget.onDelete();
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    if (!p.selected)
-                      PopupMenuItem(value: 'select', child: Text(s.select)),
-                    PopupMenuItem(value: 'edit', child: Text(s.edit)),
-                    if (p.yamlContent.isNotEmpty)
-                      PopupMenuItem(value: 'editYaml', child: Text(s.editYaml)),
-                    PopupMenuItem(value: 'refresh', child: Text(s.refresh)),
-                    PopupMenuItem(value: 'delete', child: Text(s.delete)),
-                  ],
-                ),
-              ],
-            ),
-            onTap: widget.onSelect,
-          ),
-          // Proxy nodes list (expanded)
-          if (_expanded && proxyNames.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-              child: Column(
-                children: proxyNames
-                    .map((name) => ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.vpn_key, size: 18),
-                          title: Text(name, style: const TextStyle(fontSize: 14)),
-                          visualDensity: VisualDensity.compact,
-                        ))
-                    .toList(),
-              ),
-            ),
-        ],
+      child: ListTile(
+        leading: Icon(
+          p.selected ? Icons.check_circle : Icons.circle_outlined,
+          color: p.selected
+              ? cs.primary
+              : cs.onSurfaceVariant.withValues(alpha: 0.5),
+        ),
+        title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (p.url.isNotEmpty)
+              Text(p.url, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            if (updated != null)
+              Text('Updated: ${updated.toLocal().toString().substring(0, 16)}',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (v) {
+            switch (v) {
+              case 'select': onSelect();
+              case 'edit': onEdit();
+              case 'editYaml': onEditYaml();
+              case 'refresh': onRefresh();
+              case 'delete': onDelete();
+            }
+          },
+          itemBuilder: (_) => [
+            if (!p.selected)
+              PopupMenuItem(value: 'select', child: Text(s.select)),
+            PopupMenuItem(value: 'edit', child: Text(s.edit)),
+            if (p.yamlContent.isNotEmpty)
+              PopupMenuItem(value: 'editYaml', child: Text(s.editYaml)),
+            PopupMenuItem(value: 'refresh', child: Text(s.refresh)),
+            PopupMenuItem(value: 'delete', child: Text(s.delete)),
+          ],
+        ),
+        onTap: onSelect,
       ),
     );
   }

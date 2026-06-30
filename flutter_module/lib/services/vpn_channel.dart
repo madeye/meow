@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/services.dart';
 import '../models/profile.dart';
 import '../models/vpn_state.dart';
@@ -68,11 +67,14 @@ class VpnChannel {
 
   Future<void> refreshAll() => _method.invokeMethod('refreshAll');
 
-  Future<void> saveSelectedProxy(int profileId, String proxyName) =>
-      _method.invokeMethod('saveSelectedProxy', {'id': profileId, 'proxyName': proxyName});
-
   Future<void> updateProfileYaml(int id, String yamlContent) =>
       _method.invokeMethod('updateProfileYaml', {'id': id, 'yamlContent': yamlContent});
+
+  /// Validate a clash config by handing it to meow-rs (never parsed in Dart).
+  /// Returns `null` when the config is valid, otherwise the engine's error
+  /// message.
+  Future<String?> validateConfig(String yamlContent) =>
+      _method.invokeMethod<String>('validateConfig', {'yamlContent': yamlContent});
 
   Future<String> revertProfileYaml(int id) async {
     final result = await _method.invokeMethod<String>('revertProfileYaml', {'id': id});
@@ -103,118 +105,4 @@ class VpnChannel {
         'mode': mode,
         'packages': json.encode(packages),
       });
-
-  /// Select a proxy node in every Selector group whose default (first listed
-  /// proxy) does NOT resolve to DIRECT or REJECT. Groups that default to a
-  /// bypass/block outcome — directly, or transitively through another select
-  /// group — are treated as kill-switch/bypass groups and left untouched.
-  /// [yamlContent] is the profile YAML used to find group membership.
-  Future<void> selectProxyNode(String nodeName, String yamlContent) async {
-    final groups = _parseSelectorGroups(yamlContent);
-    final groupsByName = <String, List<String>>{
-      for (final g in groups)
-        (g['name'] as String): (g['proxies'] as List<String>),
-    };
-    final client = HttpClient();
-    try {
-      for (final group in groups) {
-        final groupName = group['name'] as String? ?? '';
-        final proxies = group['proxies'] as List<String>? ?? const [];
-        if (proxies.isEmpty) continue;
-        if (_resolvesToBypass(proxies.first, groupsByName, <String>{})) continue;
-        if (!proxies.contains(nodeName)) continue;
-
-        final putReq = await client.put(
-            '127.0.0.1', 9090, '/proxies/${Uri.encodeComponent(groupName)}');
-        putReq.headers.contentType = ContentType.json;
-        putReq.write(json.encode({'name': nodeName}));
-        final putRes = await putReq.close();
-        await putRes.drain();
-      }
-    } finally {
-      client.close();
-    }
-  }
-
-  /// Returns true if [name] is DIRECT, REJECT, or a proxy-group whose default
-  /// (first listed proxy) transitively resolves to DIRECT/REJECT. Visited set
-  /// guards against cycles in pathological configs.
-  static bool _resolvesToBypass(
-    String name,
-    Map<String, List<String>> groupsByName,
-    Set<String> visited,
-  ) {
-    if (name == 'DIRECT' || name == 'REJECT') return true;
-    final nested = groupsByName[name];
-    if (nested == null || nested.isEmpty) return false;
-    if (!visited.add(name)) return false; // cycle → treat as non-bypass
-    return _resolvesToBypass(nested.first, groupsByName, visited);
-  }
-
-  /// Parse proxy-groups of type "select" from YAML, returning group name + proxy list.
-  static List<Map<String, dynamic>> _parseSelectorGroups(String yaml) {
-    final result = <Map<String, dynamic>>[];
-    final lines = yaml.split('\n');
-    var inGroups = false;
-    var inGroup = false;
-    var inProxies = false;
-    String? currentName;
-    String? currentType;
-    List<String> currentProxies = [];
-
-    for (final line in lines) {
-      final trimmed = line.trim();
-
-      if (trimmed == 'proxy-groups:') {
-        inGroups = true;
-        continue;
-      }
-
-      if (!inGroups) continue;
-
-      // New top-level section ends proxy-groups
-      if (!line.startsWith(' ') && trimmed.isNotEmpty && trimmed != 'proxy-groups:') {
-        // Save last group
-        if (currentName != null && currentType == 'select') {
-          result.add({'name': currentName, 'proxies': currentProxies});
-        }
-        inGroups = false;
-        continue;
-      }
-
-      // New group entry
-      if (line.startsWith('  - name:') || line.startsWith('  - {name:')) {
-        // Save previous group
-        if (currentName != null && currentType == 'select') {
-          result.add({'name': currentName, 'proxies': currentProxies});
-        }
-        final match = RegExp(r'name:\s*(.+?)(?:,|\s*$)').firstMatch(line);
-        currentName = match?.group(1)?.trim();
-        currentType = null;
-        currentProxies = [];
-        inGroup = true;
-        inProxies = false;
-        continue;
-      }
-
-      if (!inGroup) continue;
-
-      if (trimmed.startsWith('type:')) {
-        currentType = trimmed.substring(5).trim();
-      } else if (trimmed == 'proxies:') {
-        inProxies = true;
-      } else if (inProxies && trimmed.startsWith('- ')) {
-        currentProxies.add(trimmed.substring(2).trim());
-      } else if (inProxies && !trimmed.startsWith('-') && trimmed.isNotEmpty) {
-        inProxies = false;
-      }
-    }
-
-    // Save last group
-    if (currentName != null && currentType == 'select') {
-      result.add({'name': currentName, 'proxies': currentProxies});
-    }
-
-    return result;
-  }
 }

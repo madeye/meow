@@ -57,6 +57,7 @@ class S {
   String get yamlValid => 'Valid YAML';
   String yamlInvalid(int line, int col, String msg) =>
       'Line $line, Col $col: $msg';
+  String configInvalid(String msg) => 'Invalid config: $msg';
   String get revert => 'Revert';
   String get revertConfirm => 'Revert to last downloaded version?';
   String get discardChanges => 'Discard unsaved changes?';
@@ -250,6 +251,8 @@ class _Zh extends S {
   String get yamlValid => 'YAML 格式正确';
   @override
   String yamlInvalid(int line, int col, String msg) => '第 $line 行第 $col 列：$msg';
+  @override
+  String configInvalid(String msg) => '配置无效：$msg';
   @override
   String get revert => '还原';
   @override

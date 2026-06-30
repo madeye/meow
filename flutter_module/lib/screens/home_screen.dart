@@ -6,6 +6,7 @@ import '../services/vpn_channel.dart';
 import '../models/vpn_state.dart';
 import '../models/traffic_stats.dart';
 import '../models/profile.dart';
+import '../models/proxy.dart';
 import '../models/proxy_group.dart';
 import '../services/mihomo_api.dart';
 import '../theme/app_theme.dart';
@@ -22,8 +23,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   VpnState _state = VpnState.stopped;
   TrafficStats _traffic = const TrafficStats();
   ClashProfile? _profile;
-  List<String> _proxyNames = [];
-  String? _selectedProxy;
+  // Proxy groups + their members, fetched live from the engine's REST API
+  // (`/proxies`). No YAML is parsed in Dart — the engine is the source of
+  // truth for what groups exist and which node each one currently selects.
+  List<ProxyGroup> _groups = [];
+  Map<String, Proxy> _proxies = {};
+  String? _expandedGroup;
   StreamSubscription? _stateSub;
   StreamSubscription? _trafficSub;
 
@@ -36,11 +41,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _stateSub = _vpn.stateStream.listen((s) {
       final wasConnected = _state == VpnState.connected;
       if (mounted) setState(() => _state = s);
-      if (!wasConnected &&
-          s == VpnState.connected &&
-          _selectedProxy != null &&
-          _profile != null) {
-        _vpn.selectProxyNode(_selectedProxy!, _profile!.yamlContent);
+      // Once the engine is up, (re)load proxy groups from its REST API.
+      if (!wasConnected && s == VpnState.connected) {
+        _loadState();
       }
     });
     _trafficSub = _vpn.trafficStream.listen((t) {
@@ -61,59 +64,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final state = await _vpn.getState();
       final profile = await _vpn.getSelectedProfile();
-      // Node list ordering:
-      //   1) YAML defines the canonical order (the user's subscription
-      //      lists proxies in a specific sequence — sort by region,
-      //      preferred nodes first, etc.). Always seed the list from
-      //      `ProxiesResult.fromYaml` first.
-      //   2) When the engine is running, also pull names from the live
-      //      `/proxies` endpoint — that surface includes proxy-provider
-      //      nodes that don't appear inline in the subscription YAML.
-      //      The endpoint's map iteration order is non-deterministic
-      //      (Go map), so we only use it to discover *additional* names
-      //      and append them after the YAML-ordered set.
-      final excluded = {'DIRECT', 'REJECT', 'COMPATIBLE'};
-      final names = <String>[];
-      final seen = <String>{};
-      if (profile != null) {
-        final fromYaml = ProxiesResult.fromYaml(profile.yamlContent);
-        for (final n in fromYaml.proxies.keys) {
-          if (excluded.contains(n) || !seen.add(n)) continue;
-          names.add(n);
-        }
-      }
+      // Proxy groups come only from the live engine. When the VPN is off the
+      // engine isn't running, so there are no groups to show — selection is a
+      // runtime operation against the REST API, not a config-parsing one.
+      var groups = <ProxyGroup>[];
+      var proxies = <String, Proxy>{};
       if (state == VpnState.connected) {
         try {
           final result = await MihomoApi.instance.getProxies();
-          for (final n in result.proxies.keys) {
-            if (excluded.contains(n) || !seen.add(n)) continue;
-            names.add(n);
-          }
+          groups = result.selectableGroups;
+          proxies = result.proxies;
         } catch (_) {
-          // Engine API unreachable — YAML-derived list already populated.
+          // Engine API not reachable yet — leave the list empty.
         }
       }
       if (mounted) {
         setState(() {
           _state = state;
-          final changed = _profile?.id != profile?.id;
           _profile = profile;
-          _proxyNames = names;
-          if (changed ||
-              _selectedProxy == null ||
-              !_proxyNames.contains(_selectedProxy)) {
-            final saved = profile?.selectedProxy ?? '';
-            if (saved.isNotEmpty && _proxyNames.contains(saved)) {
-              _selectedProxy = saved;
-            } else {
-              _selectedProxy = _proxyNames.isNotEmpty
-                  ? _proxyNames.first
-                  : null;
-            }
-          }
+          _groups = groups;
+          _proxies = proxies;
         });
       }
     } catch (_) {}
+  }
+
+  /// Select [node] within [group] via the engine REST API, then reflect the
+  /// new `now` locally. The engine owns selection state — the app never edits
+  /// the config to change the active node.
+  Future<void> _selectNode(String group, String node) async {
+    final idx = _groups.indexWhere((g) => g.name == group);
+    if (idx < 0) return;
+    try {
+      await MihomoApi.instance.selectProxy(group, node);
+      if (!mounted) return;
+      final g = _groups[idx];
+      setState(() {
+        _groups[idx] = ProxyGroup(
+          name: g.name,
+          type: g.type,
+          now: node,
+          all: g.all,
+          history: g.history,
+        );
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  /// Run a latency probe across every member of [group] and refresh delays.
+  Future<void> _testGroup(String group) async {
+    try {
+      await MihomoApi.instance.testGroupDelay(group);
+    } catch (_) {
+      // Ignore probe failures — surfaced as "--" in the UI.
+    }
+    await _loadState();
   }
 
   @override
@@ -167,9 +177,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(s.appName),
-                if (_selectedProxy != null && isOn)
+                if (_profile != null && isOn)
                   Text(
-                    _selectedProxy!,
+                    _profile!.name,
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -244,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Row(
                 children: [
                   Text(
-                    s.proxyNodes,
+                    s.proxyGroups,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w600,
@@ -265,13 +275,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
 
-          // Proxy node list
-          if (_proxyNames.isEmpty)
+          // Proxy groups (live from the engine REST API)
+          if (_groups.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
                 child: Text(
-                  s.noSubscriptionHint,
+                  isOn ? s.noGroups : s.noSubscriptionHint,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -282,20 +292,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           else
             SliverList(
               delegate: SliverChildBuilderDelegate((context, index) {
-                final name = _proxyNames[index];
-                final selected = name == _selectedProxy;
-                return _ProxyNodeTile(
-                  name: name,
-                  selected: selected,
-                  onTap: () {
-                    setState(() => _selectedProxy = name);
-                    if (_profile != null) {
-                      _vpn.saveSelectedProxy(_profile!.id, name);
-                      _vpn.selectProxyNode(name, _profile!.yamlContent);
-                    }
-                  },
+                final group = _groups[index];
+                return _ProxyGroupCard(
+                  group: group,
+                  proxies: _proxies,
+                  expanded: _expandedGroup == group.name,
+                  onToggleExpand: () => setState(() {
+                    _expandedGroup =
+                        _expandedGroup == group.name ? null : group.name;
+                  }),
+                  onSelect: (node) => _selectNode(group.name, node),
+                  onTest: () => _testGroup(group.name),
                 );
-              }, childCount: _proxyNames.length),
+              }, childCount: _groups.length),
             ),
 
           // Bottom padding
@@ -359,9 +368,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: color,
                       ),
                     ),
-                    if (_selectedProxy != null)
+                    if (_profile != null)
                       Text(
-                        _selectedProxy!,
+                        _profile!.name,
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -424,52 +433,95 @@ class _TrafficTile extends StatelessWidget {
   }
 }
 
-class _ProxyNodeTile extends StatelessWidget {
-  final String name;
-  final bool selected;
-  final VoidCallback onTap;
+/// One proxy group, rendered as an expandable card. Collapsed it shows the
+/// group name, type and the member it currently points at (`now`); expanded it
+/// lists every member with its latest latency and lets the user pick one.
+class _ProxyGroupCard extends StatelessWidget {
+  final ProxyGroup group;
+  final Map<String, Proxy> proxies;
+  final bool expanded;
+  final VoidCallback onToggleExpand;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onTest;
 
-  const _ProxyNodeTile({
-    required this.name,
-    required this.selected,
-    required this.onTap,
+  const _ProxyGroupCard({
+    required this.group,
+    required this.proxies,
+    required this.expanded,
+    required this.onToggleExpand,
+    required this.onSelect,
+    required this.onTest,
   });
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Card(
-        color: selected ? cs.primaryContainer : null,
-        child: ListTile(
-          leading: Icon(
-            selected ? Icons.check_circle : Icons.circle_outlined,
-            color: selected
-                ? cs.onPrimaryContainer
-                : cs.onSurfaceVariant.withValues(alpha: 0.5),
-            size: 22,
-          ),
-          title: Text(
-            name,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-              color: selected ? cs.onPrimaryContainer : null,
-            ),
-          ),
-          trailing: selected
-              ? Text(
-                  S.of(context).active,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onPrimaryContainer,
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.lan_outlined, color: cs.primary, size: 22),
+              title: Text(
+                group.name,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                '${group.type} · ${group.now}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.speed, size: 20),
+                    tooltip: s.urlTestAll,
+                    onPressed: onTest,
                   ),
-                )
-              : null,
-          onTap: onTap,
-          dense: true,
+                  Icon(expanded ? Icons.expand_less : Icons.expand_more),
+                ],
+              ),
+              onTap: onToggleExpand,
+            ),
+            if (expanded)
+              ...group.all.map((name) {
+                final selected = name == group.now;
+                final delay = proxies[name]?.latestDelay ?? 0;
+                return ListTile(
+                  dense: true,
+                  contentPadding:
+                      const EdgeInsets.only(left: 28, right: 16),
+                  leading: Icon(
+                    selected ? Icons.check_circle : Icons.circle_outlined,
+                    size: 20,
+                    color: selected
+                        ? cs.primary
+                        : cs.onSurfaceVariant.withValues(alpha: 0.5),
+                  ),
+                  title: Text(
+                    name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: Text(
+                    delay > 0 ? s.latencyMs(delay) : s.untested,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: delay > 0 ? cs.primary : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  onTap: selected ? null : () => onSelect(name),
+                );
+              }),
+          ],
         ),
       ),
     );

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:yaml/yaml.dart';
 import '../l10n/strings.dart';
 import '../models/profile.dart';
 import '../services/vpn_channel.dart';
@@ -21,8 +20,6 @@ class _YamlEditorScreenState extends State<YamlEditorScreen> {
   late String _currentText;
   Timer? _validationDebounce;
   String? _errorMessage;
-  int _errorLine = 0;
-  int _errorCol = 0;
 
   @override
   void initState() {
@@ -48,34 +45,21 @@ class _YamlEditorScreenState extends State<YamlEditorScreen> {
     if (mounted) setState(() {}); // refresh save/revert button enabled state
   }
 
-  void _validate(String text) {
+  /// Check the config with meow-rs (the engine parses/validates it — the Dart
+  /// side never parses YAML). `null`/empty means valid; anything else is the
+  /// engine's error message.
+  Future<void> _validate(String text) async {
+    String? error;
     try {
-      loadYaml(text);
-      if (mounted) {
-        setState(() {
-          _errorMessage = null;
-          _errorLine = 0;
-          _errorCol = 0;
-        });
-      }
-    } on YamlException catch (e) {
-      final span = e.span;
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.message;
-          _errorLine = (span?.start.line ?? 0) + 1;
-          _errorCol = (span?.start.column ?? 0) + 1;
-        });
-      }
+      error = await VpnChannel.instance.validateConfig(text);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _errorLine = 0;
-          _errorCol = 0;
-        });
-      }
+      error = e.toString();
     }
+    // Ignore stale results if the user kept typing or left the screen.
+    if (!mounted || text != _currentText) return;
+    setState(() {
+      _errorMessage = (error == null || error.isEmpty) ? null : error;
+    });
   }
 
   bool get _hasUnsaved => _currentText != _initialText;
@@ -199,7 +183,7 @@ class _YamlEditorScreenState extends State<YamlEditorScreen> {
               valid: _isValid,
               message: _isValid
                   ? s.yamlValid
-                  : s.yamlInvalid(_errorLine, _errorCol, _errorMessage ?? ''),
+                  : s.configInvalid(_errorMessage ?? ''),
             ),
           ],
         ),
