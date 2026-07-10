@@ -34,20 +34,26 @@ Network
 
 ## Features
 
-- **Proxy Protocols**: Shadowsocks, Trojan, Direct
+- **Proxy Protocols**: Shadowsocks, Trojan, AnyTLS, Direct
   - Shadowsocks plugins: built-in `simple-obfs` (HTTP/TLS) and `v2ray-plugin`
     (WebSocket, optional TLS) — no external SIP003 binary required
-- **Rule Engine**: Domain, IP, port, geo-based routing, rule-providers
+- **Transports**: TLS (with ECH), WebSocket, gRPC, HTTP/2, HTTPUpgrade
+- **Rule Engine**: Domain, IP, port, geo-based routing, rule-providers, proxy groups
 - **tun2socks**: Pure Rust via netstack-smoltcp (no C dependencies)
-- **DNS**: DoH forwarding through proxy chain
+- **DNS**: Engine-owned fake-IP resolver; every in-TUN DNS query is answered
+  in-process and upstream lookups bypass the tunnel via protected sockets
 - **Socket Protection**: Per-socket `VpnService.protect(fd)` via JNI callback
+- **REST API**: Embedded external controller (`127.0.0.1:9090`) drives the
+  live connections, logs, rules, and traffic views
 - **Flutter UI**: Shadowrocket-style tab view
-  - Home: VPN toggle, proxy node selection, connection status
-  - Subscribe: Add/edit/remove subscriptions, view proxy nodes, YAML editor
+  - Home: VPN toggle, proxy group & node selection, connection status
+  - Subscribe: Add/edit/remove subscriptions, YAML editor, import/export config
   - Traffic: Real-time speed chart, session upload/download stats
-  - Settings: Version, network config, per-app VPN proxy/bypass, about
+  - Connections / Logs / Rules: Live views powered by the REST API
+  - Settings: Version, network config, per-app VPN proxy/bypass, connectivity
+    diagnostics, about
 - **i18n**: English, Chinese (zh_CN)
-- **E2E Tests**: Automated with ssserver + Android emulator
+- **E2E Tests**: Automated with ssserver + Android emulator (SS and HTTP-proxy harnesses)
 
 ## Building
 
@@ -89,10 +95,13 @@ core/                           Android library module
   src/main/rust/
     mihomo-android-ffi/         Rust FFI crate (JNI + tun2socks)
 flutter_module/                 Flutter UI module
-  lib/screens/                  Home, Subscriptions, Traffic, Settings
+  lib/screens/                  Home, Subscriptions, Traffic, Connections,
+                                Logs, Rules, Per-app proxy, Settings
+  lib/services/                 VPN channel, REST API client, traffic history
   lib/l10n/                     Localization (en, zh_CN)
 mobile/                         Android app module (FlutterActivity host)
-test-e2e.sh                     End-to-end test script
+test-e2e.sh                     End-to-end test script (Shadowsocks)
+test-e2e-http.sh                End-to-end test script (HTTP proxy)
 ```
 
 ## License

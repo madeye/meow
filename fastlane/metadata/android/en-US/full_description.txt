@@ -4,7 +4,7 @@ Meet Meow, your adorable feline companion on the internet! This smart little cat
 
 Features your kitty brings:
 - One-tap connect — even a cat can do it
-- Shadowsocks & Trojan support
+- Shadowsocks, Trojan & AnyTLS support
 - Smart rule-based routing
 - Real-time traffic monitor with pretty charts
 - Subscription-based server management
