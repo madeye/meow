@@ -60,24 +60,23 @@ Flutter (Dart)                    MethodChannel("io.github.madeye.meow/vpn")
     ↕                             EventChannel("io.github.madeye.meow/vpn_state")
 Kotlin (Android)                  EventChannel("io.github.madeye.meow/traffic")
     ↕ JNI
-Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
+Rust (libmihomo_android_ffi.so)   lwip netstack tun2socks + meow-rs engine
 ```
 
 ### Rust FFI (`core/src/main/rust/mihomo-android-ffi/`)
 
 - **lib.rs**: JNI entry points (`Java_io_github_madeye_meow_core_MihomoCore_*`), engine lifecycle (tokio runtime, Tunnel, API server). No SOCKS5/HTTP loopback listener — every TUN flow is dispatched in-process.
-- **tun2socks.rs**: Reads TUN fd packets → feeds to `netstack-smoltcp` Stack → each accepted TCP flow is wrapped as a `ProxyConn` newtype around the netstack `TcpStream` and handed straight to `meow_tunnel::tcp::handle_tcp(&inner, conn, metadata)`. UDP/53 intercepted and answered by the in-process plain-TCP DNS client (which uses the same `handle_tcp` path).
+- **tun2socks.rs**: Reads TUN fd packets. UDP/53 is intercepted pre-stack: A/AAAA queries are answered in-process by the engine's `meow_dns::Resolver` (`DnsServer::handle_query`), other qtypes are forwarded to upstream DNS over protected sockets. Everything else feeds the `lwip` netstack — each accepted TCP flow is wrapped as `NetstackConn` (a `ProxyConn` newtype around `lwip::TcpStream`) and handed straight to `meow_tunnel::tcp::handle_tcp(&inner, conn, metadata)`; UDP flows are dispatched to `meow_tunnel::udp::handle_udp` with per-session reply readers.
 - **protect.rs**: Implements `meow_common::SocketProtector` via a JNI shim around `VpnService.protect(int)`. Installed once in `nativeStartTun2Socks`; meow-rs invokes it for every outbound TCP/UDP fd (proxy adapters + the DNS resolver's default `SocketFactory`) before `connect()`/`bind()`.
-- **engine.rs**: `tunnel()` accessor — returns the running `Tunnel` handle so `tun2socks`, `dns_client`, and `china_dns` can dispatch flows through `meow_tunnel::tcp::handle_tcp` without re-implementing rule routing.
-- **doh_client.rs**: DNS-over-HTTPS via reqwest. Falls back to `1.1.1.1` and `8.8.8.8`.
+- **engine.rs**: `tunnel()` accessor — returns the running `Tunnel` handle so `tun2socks` can dispatch flows through `meow_tunnel::{tcp,udp}` without re-implementing rule routing. Also `strip_and_inject`: strips listener ports, `sniffer:`, and the user `dns:` block from config.yaml and injects the pinned fake-IP DNS block (same pattern as meow-ios).
 - **diagnostics.rs**: JNI-exposed native connectivity probes (`nativeTestDirectTcp`, UDP) used by the Settings diagnostics UI.
 - **logging.rs**: `android_logger` / tracing setup bridging Rust logs to logcat and the in-app log stream.
 
 ### Kotlin Core (`core/src/main/java/io/github/madeye/meow/`)
 
 - **bg/BaseService.kt**: State machine (Idle→Connecting→Connected→Stopping→Stopped) with AIDL binder, RemoteCallbackList for traffic callbacks. Ported from shadowsocks-android.
-- **bg/VpnService.kt**: Creates TUN interface (172.19.0.1/30, MTU 1500, route 0.0.0.0/0). Passes TUN fd + `this` (VpnService) to Rust via JNI. DNS set to 172.19.0.2 (routed through TUN → tun2socks DoH).
-- **bg/MihomoInstance.kt**: Writes config.yaml (stripping `dns:` and `subscriptions:` sections), calls JNI start/stop. DNS is disabled in mihomo — handled by tun2socks DoH.
+- **bg/VpnService.kt**: Creates TUN interface (172.19.0.1/30, MTU 1500, route 0.0.0.0/0). Passes TUN fd + `this` (VpnService) to Rust via JNI. DNS set to 172.19.0.2 (routed through TUN → in-process DNS interception in tun2socks).
+- **bg/MihomoInstance.kt**: Writes config.yaml (stripping only the app-managed `subscriptions:` block — `dns:`/listeners/`sniffer:` are handled by `engine::strip_and_inject` on the Rust side), calls JNI start/stop.
 - **core/MihomoCore.kt**: JNI bridge object. `System.loadLibrary("mihomo_android_ffi")`.
 - **database/**: Room database with `ClashProfile` entity (id, name, url, yamlContent, selected, lastUpdated, tx, rx).
 
@@ -91,9 +90,9 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 
 ### Key Data Flow
 
-1. User taps VPN switch → Flutter `MethodChannel.invokeMethod('connect')` → Kotlin `startForegroundService(VpnService)` → `MihomoInstance.start()` writes config.yaml → JNI `nativeStartEngine()` → Rust starts tokio runtime, tunnel, API server → JNI `nativeStartTun2Socks(vpnService, fd, 1053)` → Rust installs the `SocketProtector` (JNI shim around `VpnService.protect`) into meow-common, then starts the netstack-smoltcp stack reading from TUN fd.
+1. User taps VPN switch → Flutter `MethodChannel.invokeMethod('connect')` → Kotlin `startForegroundService(VpnService)` → `MihomoInstance.start()` writes config.yaml → JNI `nativeStartEngine()` → Rust starts tokio runtime, tunnel, API server → JNI `nativeStartTun2Socks(vpnService, fd, 1053)` → Rust installs the `SocketProtector` (JNI shim around `VpnService.protect`) into meow-common, then starts the lwip netstack reading from TUN fd.
 
-2. App traffic → TUN → tun2socks intercepts: UDP port 53 → in-process TCP DNS (china-dns split → `meow_tunnel::tcp::handle_tcp`); TCP → netstack-smoltcp accepts → `meow_tunnel::tcp::handle_tcp(&inner, NetstackConn(stream), metadata)` → mihomo routes via rules → proxy adapter (SS/Trojan/Direct) dials via `meow_common::connect_tcp` → installed `SocketProtector` fires `VpnService.protect(fd)` → connect bypasses VPN → remote server.
+2. App traffic → TUN → tun2socks intercepts: UDP port 53 → in-process DNS (engine `meow_dns::Resolver` for A/AAAA, upstream passthrough otherwise); TCP → lwip netstack accepts → `meow_tunnel::tcp::handle_tcp(&inner, NetstackConn(stream), metadata)` → mihomo routes via rules → proxy adapter (SS/Trojan/Direct) dials via `meow_common::connect_tcp` → installed `SocketProtector` fires `VpnService.protect(fd)` → connect bypasses VPN → remote server.
 
 ## Module Dependencies
 
@@ -101,7 +100,7 @@ Rust (libmihomo_android_ffi.so)   netstack-smoltcp tun2socks + meow-rs engine
 mobile → core, flutter
 core → rust (via rust-android-gradle cargo plugin)
 mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.16.0)
-                   → netstack-smoltcp, lwip (custom rev), jni, android_logger, reqwest, socket2
+                   → lwip (patched madeye/lwip rev), jni, android_logger, redb, mimalloc
 ```
 
 meow-rs crates are pinned by git **tag** in `Cargo.toml` — bumping the engine means changing the tag on every `meow-*` line. Enabled protocol/transport features: `anytls`, `ech-tls-tunnel` (config/proxy) and `tls,ws,ech,grpc,h2,httpupgrade` (transport). Supported proxy protocols: Shadowsocks (with built-in `simple-obfs` and `v2ray-plugin`), Trojan, AnyTLS, Direct.
