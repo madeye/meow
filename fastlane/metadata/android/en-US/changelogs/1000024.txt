@@ -1,0 +1,3 @@
+- Fresh new look: sky-blue theme and a new app icon, matching the iOS app
+- Updated proxy engine (meow-rs v0.18.0) with bug fixes and performance improvements
+- Stability improvements
