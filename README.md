@@ -2,7 +2,7 @@
 
 ![Feature Graphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
-A Clash/mihomo Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and netstack-smoltcp tun2socks.
+A Clash/mihomo Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and lwip-based tun2socks.
 
 An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
 
@@ -23,7 +23,7 @@ Android Native (Kotlin)
     |  JNI (System.loadLibrary)
     v
 Rust FFI (libmihomo_android_ffi.so)
-    |  netstack-smoltcp tun2socks
+    |  lwip netstack tun2socks
     |  Per-socket VpnService.protect() via JNI
     v
 meow-rs (Cargo dependency)
@@ -39,7 +39,7 @@ Network
     (WebSocket, optional TLS) — no external SIP003 binary required
 - **Transports**: TLS (with ECH), WebSocket, gRPC, HTTP/2, HTTPUpgrade
 - **Rule Engine**: Domain, IP, port, geo-based routing, rule-providers, proxy groups
-- **tun2socks**: Pure Rust via netstack-smoltcp (no C dependencies)
+- **tun2socks**: Userspace lwIP netstack (patched `lwip` crate)
 - **DNS**: Engine-owned fake-IP resolver; every in-TUN DNS query is answered
   in-process and upstream lookups bypass the tunnel via protected sockets
 - **Socket Protection**: Per-socket `VpnService.protect(fd)` via JNI callback
