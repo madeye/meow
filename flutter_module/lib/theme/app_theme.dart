@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 
 @immutable
 class MeowColors extends ThemeExtension<MeowColors> {
-  static const iconOrange = Color(0xFFF0881A);
-  static const iconAmber = Color(0xFFFFB24A);
-  static const iconCoral = Color(0xFFE77B61);
-  static const iconCream = Color(0xFFFFF3E0);
+  // Brand colors ported from meow-ios AppTheme (GlassCard.swift), sampled
+  // from the peeking-cat app icon: sky blue, white ledge, ginger cat.
+  static const brandAccent = Color(0xFF0077CC);
+  static const brandAccentDark = Color(0xFF2CB5FF);
+  static const brandGinger = Color(0xFFFE9B01);
+  static const brandGingerDark = Color(0xFFFFB340);
+  static const brandNavy = Color(0xFF0049B8);
+  static const brandInk = Color(0xFF102A43);
 
   final Color canvas;
   final Color card;
@@ -53,63 +57,67 @@ class MeowColors extends ThemeExtension<MeowColors> {
 
 ThemeData buildAppTheme(Brightness brightness) {
   final isLight = brightness == Brightness.light;
+  // Upload/download mirror the iOS traffic chart: Upload = warning amber,
+  // Download = brand accent.
   final meow = isLight
       ? const MeowColors(
-          canvas: MeowColors.iconCream,
-          card: Color(0xFFFFFBF5),
-          connected: Color(0xFFD96F00),
-          upload: MeowColors.iconOrange,
-          download: MeowColors.iconCoral,
+          canvas: Color(0xFFEAF8FF),
+          card: Color(0xFFFFFFFF),
+          connected: Color(0xFF148742),
+          upload: Color(0xFFF29A00),
+          download: MeowColors.brandAccent,
         )
       : const MeowColors(
-          canvas: Color(0xFF1B1209),
-          card: Color(0xFF261A10),
-          connected: Color(0xFFFFB15F),
-          upload: Color(0xFFFFB15F),
-          download: Color(0xFFFF9A82),
+          canvas: Color(0xFF0B1720),
+          card: Color(0xFF152430),
+          connected: Color(0xFF33C377),
+          upload: Color(0xFFFFB84D),
+          download: MeowColors.brandAccentDark,
         );
 
   final seeded = ColorScheme.fromSeed(
-    seedColor: MeowColors.iconOrange,
+    seedColor: MeowColors.brandAccent,
     brightness: brightness,
     contrastLevel: isLight ? 0.35 : 0.25,
   );
 
   final scheme = seeded.copyWith(
-    primary: isLight ? MeowColors.iconOrange : const Color(0xFFFFB15F),
-    onPrimary: isLight ? const Color(0xFF2D1600) : const Color(0xFF2F1500),
+    primary: isLight ? MeowColors.brandAccent : MeowColors.brandAccentDark,
+    onPrimary: isLight ? Colors.white : const Color(0xFF00344F),
     primaryContainer: isLight
-        ? const Color(0xFFFFDEB8)
-        : const Color(0xFF6B3400),
+        ? const Color(0xFFDDF3FF)
+        : const Color(0xFF1C3040),
     onPrimaryContainer: isLight
-        ? const Color(0xFF3E1D00)
-        : const Color(0xFFFFE2C2),
-    secondary: isLight ? MeowColors.iconCoral : const Color(0xFFFFB4A4),
-    onSecondary: isLight ? const Color(0xFF3A0C05) : const Color(0xFF4D160E),
+        ? const Color(0xFF00344F)
+        : const Color(0xFFCBE8FF),
+    secondary: isLight ? MeowColors.brandGinger : MeowColors.brandGingerDark,
+    onSecondary: isLight ? const Color(0xFF3F2500) : const Color(0xFF3F2500),
     secondaryContainer: isLight
-        ? const Color(0xFFFFDAD3)
-        : const Color(0xFF7A2C21),
-    onSecondaryContainer: isLight
-        ? const Color(0xFF4A120B)
-        : const Color(0xFFFFDAD3),
-    tertiary: isLight ? const Color(0xFFA76500) : MeowColors.iconAmber,
-    onTertiary: isLight ? Colors.white : const Color(0xFF3B2100),
-    tertiaryContainer: isLight
-        ? const Color(0xFFFFDDB0)
+        ? const Color(0xFFFFE3BF)
         : const Color(0xFF5B3A00),
-    onTertiaryContainer: isLight
+    onSecondaryContainer: isLight
         ? const Color(0xFF3A2100)
         : const Color(0xFFFFDDB0),
+    tertiary: isLight ? MeowColors.brandNavy : const Color(0xFF9CC5FF),
+    onTertiary: isLight ? Colors.white : const Color(0xFF00297A),
+    tertiaryContainer: isLight
+        ? const Color(0xFFD8E2FF)
+        : const Color(0xFF003AA0),
+    onTertiaryContainer: isLight
+        ? const Color(0xFF001849)
+        : const Color(0xFFD8E2FF),
+    error: isLight ? const Color(0xFFD9363E) : const Color(0xFFFF6B70),
+    onError: isLight ? Colors.white : const Color(0xFF5C0009),
     surface: meow.card,
-    onSurface: isLight ? const Color(0xFF241A10) : const Color(0xFFF4E7DA),
+    onSurface: isLight ? MeowColors.brandInk : const Color(0xFFE8F2FA),
     surfaceContainerHighest: isLight
-        ? const Color(0xFFF2DED0)
-        : const Color(0xFF504539),
+        ? const Color(0xFFDDF3FF)
+        : const Color(0xFF1C3040),
     onSurfaceVariant: isLight
-        ? const Color(0xFF5B4A3A)
-        : const Color(0xFFD5C3B5),
-    outline: isLight ? const Color(0xFF927764) : const Color(0xFFA78D78),
-    outlineVariant: isLight ? const Color(0xFFE6CDBA) : const Color(0xFF5C4A3A),
+        ? const Color(0xFF526B7A)
+        : const Color(0xFF9DB6C6),
+    outline: isLight ? const Color(0xFF5A7484) : const Color(0xFF8AA6B8),
+    outlineVariant: isLight ? const Color(0xFFA8D8F0) : const Color(0xFF2C4A60),
   );
 
   final base = ThemeData(useMaterial3: true, brightness: brightness);
@@ -176,7 +184,7 @@ ThemeData buildAppTheme(Brightness brightness) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isLight ? const Color(0xFFFFF7EC) : const Color(0xFF21160E),
+      fillColor: isLight ? const Color(0xFFF3FAFF) : const Color(0xFF101D28),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
@@ -190,10 +198,10 @@ ThemeData buildAppTheme(Brightness brightness) {
     dividerTheme: DividerThemeData(color: scheme.outlineVariant),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: isLight
-          ? const Color(0xFF3B2818)
-          : const Color(0xFFFFE2C2),
+          ? MeowColors.brandInk
+          : const Color(0xFFE8F2FA),
       contentTextStyle: TextStyle(
-        color: isLight ? Colors.white : const Color(0xFF2D1600),
+        color: isLight ? Colors.white : MeowColors.brandInk,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
