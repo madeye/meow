@@ -112,7 +112,14 @@ Android channels: MethodChannel("io.github.madeye.meow/vpn"), EventChannel("…/
 
 ### HarmonyOS app (`harmony/`)
 
-DevEco Studio (hvigor, API 12) project — see `harmony/README.md`.
+DevEco Studio (hvigor) project targeting **HarmonyOS NEXT** (5.0/API 12,
+`runtimeOS: HarmonyOS`, `@kit.*` imports) while staying OpenHarmony-
+compatible — see `harmony/README.md`. HarmonyOS 4.x and earlier are
+AOSP-based and use the Android APK.
+`harmony/scripts/check_harmony_consistency.py` (run by `test-e2e-ohos.sh`)
+cross-checks the FFI layers (Rust C ABI = C header = NAPI exports = ArkTS
+d.ts ⊇ call sites), manifest resource refs, and NEXT conventions — keep it
+passing when touching any of those files.
 `entry/src/main/cpp/napi_init.cpp` is the NAPI glue (`libmeow.so`) over the
 Rust C ABI (`mihomo_ohos_ffi.h` mirrors `mihomo-ohos-ffi/src/lib.rs`);
 `entry/src/main/ets/vpnability/MeowVpnAbility.ets` is the VPN extension

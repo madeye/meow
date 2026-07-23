@@ -7,10 +7,10 @@
 // UI port (subscriptions, node picker, connections/logs/rules) tracks the
 // Flutter feature set; this page is the functional seed.
 
-import vpnExtension from '@ohos.net.vpnExtension';
-import Want from '@ohos.app.ability.Want';
-import http from '@ohos.net.http';
-import hilog from '@ohos.hilog';
+// HarmonyOS NEXT-style Kit imports (@kit.*), per the API 12 conventions.
+import { vpnExtension, http } from '@kit.NetworkKit';
+import { Want } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const TAG = 'meow-ui';
 

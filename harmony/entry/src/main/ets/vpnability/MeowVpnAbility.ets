@@ -15,10 +15,10 @@
 // mihomo-ohos-ffi/src/protect.rs. Until the engine bump lands, a default
 // route through the TUN would loop proxy-server traffic.
 
-import VpnExtensionAbility from '@ohos.app.ability.VpnExtensionAbility';
-import vpnExtension from '@ohos.net.vpnExtension';
-import Want from '@ohos.app.ability.Want';
-import hilog from '@ohos.hilog';
+// HarmonyOS NEXT-style Kit imports (@kit.*), per the API 12 conventions.
+import { VpnExtensionAbility, vpnExtension } from '@kit.NetworkKit';
+import { Want } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import meow from 'libmeow.so';
 
 const TAG = 'meow-vpn';

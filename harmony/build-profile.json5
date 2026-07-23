@@ -3,9 +3,15 @@
     "signingConfigs": [],
     "products": [
       {
+        // HarmonyOS NEXT (5.0, API 12): compatible + target SDK both pinned
+        // to the NEXT baseline; runtimeOS HarmonyOS selects the commercial
+        // HarmonyOS NEXT toolchain/emulator in DevEco (as opposed to the
+        // open-source OpenHarmony runtime, which this project also builds
+        // against — the code uses only APIs present in both).
         "name": "default",
         "signingConfig": "default",
         "compatibleSdkVersion": "5.0.0(12)",
+        "targetSdkVersion": "5.0.0(12)",
         "runtimeOS": "HarmonyOS"
       }
     ],

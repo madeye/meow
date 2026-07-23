@@ -6,9 +6,11 @@ A Clash/mihomo Android client with Flutter UI, powered by [meow-rs](https://gith
 
 An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
 
-A HarmonyOS (OpenHarmony) port lives in [`harmony/`](harmony/): the same
-Rust engine core behind a C ABI + NAPI bridge and an ArkTS VPN extension.
-See [harmony/README.md](harmony/README.md) and `./test-e2e-ohos.sh`.
+A HarmonyOS NEXT / OpenHarmony port lives in [`harmony/`](harmony/): the
+same Rust engine core behind a C ABI + NAPI bridge and an ArkTS VPN
+extension, targeting HarmonyOS NEXT (5.0+, API 12) by default. See
+[harmony/README.md](harmony/README.md) and `./test-e2e-ohos.sh`.
+(HarmonyOS 4.x and earlier are AOSP-based — use the Android APK there.)
 
 ## Download
 

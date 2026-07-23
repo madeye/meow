@@ -1,9 +1,18 @@
-# Meow for HarmonyOS (OpenHarmony)
+# Meow for HarmonyOS NEXT / OpenHarmony
 
-HarmonyOS NEXT port of the meow VPN client. It reuses the exact same native
-engine as the Android app — `mihomo-ffi-core` (meow-rs engine + lwip
-tun2socks, see `../core/src/main/rust/`) — behind a C ABI crate
-(`mihomo-ohos-ffi`) instead of the Android JNI crate.
+Port of the meow VPN client for **HarmonyOS NEXT** (HarmonyOS 5.0+, API 12,
+pure ArkTS — no AOSP/APK compatibility layer) and the open-source
+**OpenHarmony** runtime it is based on. The project targets NEXT by default
+(`runtimeOS: "HarmonyOS"`, `compatibleSdkVersion`/`targetSdkVersion`
+`5.0.0(12)`, `@kit.*` imports) while using only APIs that exist in both
+runtimes, so it also builds against an OpenHarmony SDK by switching
+`runtimeOS` to `OpenHarmony`. Devices on HarmonyOS 4.x and earlier are
+AOSP-based and are covered by the regular Android APK instead.
+
+It reuses the exact same native engine as the Android app —
+`mihomo-ffi-core` (meow-rs engine + lwip tun2socks, see
+`../core/src/main/rust/`) — behind a C ABI crate (`mihomo-ohos-ffi`)
+instead of the Android JNI crate.
 
 ```
 ArkTS UI (entry/src/main/ets)          vpnExtension.startVpnExtensionAbility
@@ -46,10 +55,14 @@ libmihomo_ohos_ffi.so (Rust)           lwip netstack tun2socks + meow-rs engine
 
 `../test-e2e-ohos.sh` verifies the port end-to-end without a device:
 host e2e tests drive the real engine + netstack through a fake TUN fd
-(DNS fake-IP round-trip, full TCP echo flow, C ABI lifecycle), then the
-whole native stack is type-checked for `aarch64-unknown-linux-ohos`. With
-`OHOS_NDK_HOME` set it also builds the device .so, and with `hdc` + a
-device + a built HAP it installs and launches the app.
+(DNS fake-IP round-trip, full TCP echo flow, C ABI lifecycle), then
+`scripts/check_harmony_consistency.py` cross-checks the hand-maintained
+FFI layers (Rust C ABI = C header = NAPI exports = ArkTS d.ts ⊇ call
+sites), manifest resource references, and the NEXT conventions (@kit
+imports, API 12 pinning), and finally the whole native stack is
+type-checked for `aarch64-unknown-linux-ohos`. With `OHOS_NDK_HOME` set it
+also builds the device .so, and with `hdc` + a device + a built HAP it
+installs and launches the app.
 
 ## Known engine gap: per-fd socket protection
 

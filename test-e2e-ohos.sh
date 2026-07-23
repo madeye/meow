@@ -12,6 +12,11 @@
 #                     * mihomo-ohos-ffi tests/c_abi_e2e.rs — the exact C ABI
 #                       the ArkTS/NAPI layer calls: lifecycle, validation,
 #                       protect plumbing, DNS-over-TUN round-trip.
+#   1b. harmony-static — REQUIRED. Cross-checks the four hand-maintained
+#                   FFI layers (Rust C ABI = C header = NAPI exports =
+#                   ArkTS d.ts ⊇ ArkTS call sites), the module manifest's
+#                   resource references, and the HarmonyOS NEXT conventions
+#                   (@kit imports, API 12 SDK pinning).
 #   2. ohos-check — REQUIRED (self-contained). Type-checks the full native
 #                   stack for aarch64-unknown-linux-ohos. Uses the OHOS SDK
 #                   when OHOS_NDK_HOME is set; otherwise C build-script code
@@ -40,6 +45,11 @@ note "stage 1: host end-to-end tests (engine + tun2socks over fake TUN)"
 (cd "$CORE_CRATE" && cargo test --test e2e_tun)
 (cd "$OHOS_CRATE" && cargo test --test c_abi_e2e)
 PASS+=("host-e2e")
+
+# ----------------------------------------------------------- 1b. harmony-static
+note "stage 1b: harmony app static consistency (FFI layers, manifest, NEXT conventions)"
+python3 "$ROOT/harmony/scripts/check_harmony_consistency.py"
+PASS+=("harmony-static")
 
 # --------------------------------------------------------------- 2. ohos-check
 note "stage 2: type-check for aarch64-unknown-linux-ohos"
