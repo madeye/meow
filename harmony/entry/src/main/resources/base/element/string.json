@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Meow — rule-based proxy client (meow-rs engine)"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Meow"
+    },
+    {
+      "name": "vpn_ability_desc",
+      "value": "Meow VPN tunnel service"
+    }
+  ]
+}

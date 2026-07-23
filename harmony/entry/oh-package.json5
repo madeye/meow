@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.7",
+  "description": "Meow VPN client — entry module",
+  "main": "",
+  "author": "",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "libmeow.so": "file:./src/main/cpp/types/libmeow"
+  }
+}

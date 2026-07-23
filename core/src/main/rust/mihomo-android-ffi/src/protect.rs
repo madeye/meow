@@ -61,17 +61,17 @@ mod inner {
         match VpnSocketProtector::new(env, service) {
             Ok(p) => {
                 meow_common::set_socket_protector(Arc::new(p));
-                crate::logging::bridge_log("protect: SocketProtector installed");
+                mihomo_ffi_core::logging::bridge_log("protect: SocketProtector installed");
             }
             Err(e) => {
-                crate::logging::bridge_log(&format!("protect: install failed: {e}"));
+                mihomo_ffi_core::logging::bridge_log(&format!("protect: install failed: {e}"));
             }
         }
     }
 
     pub(super) fn clear() {
         meow_common::clear_socket_protector();
-        crate::logging::bridge_log("protect: SocketProtector cleared");
+        mihomo_ffi_core::logging::bridge_log("protect: SocketProtector cleared");
     }
 }
 

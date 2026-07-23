@@ -1,0 +1,39 @@
+[package]
+name = "mihomo-ohos-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# cdylib for the device .so; rlib so the host end-to-end tests in tests/ can
+# call the extern "C" surface directly.
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+unsafe_code = "allow" # C ABI requires unsafe
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+needless_return = "allow"
+
+[dependencies]
+# Platform-neutral engine core (meow-rs engine + tun2socks + diagnostics).
+# Shared with mihomo-android-ffi.
+mihomo-ffi-core = { path = "../mihomo-ffi-core" }
+
+log = "0.4"
+libc = "0.2"
+parking_lot = "0.12"
+
+# Global allocator, matching mihomo-android-ffi: mimalloc returns freed pages
+# to the OS more aggressively than musl malloc under the VPN service's tight
+# memory budget.
+mimalloc = { version = "0.1", default-features = false }
+
+[dev-dependencies]
+mihomo-ffi-core = { path = "../mihomo-ffi-core", features = ["testsupport"] }
+
+# Same patched lwip as the sibling crates — patch sections only apply from
+# the build root, so it must be repeated here. See mihomo-ffi-core/Cargo.toml
+# for the full rationale.
+[patch.crates-io]
+lwip = { git = "https://github.com/madeye/lwip", rev = "dab00c540cf0606fee14ddd99cfa6ec79d33681d" }

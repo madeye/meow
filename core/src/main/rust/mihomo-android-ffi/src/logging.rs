@@ -1,8 +1,7 @@
-use log::info;
-
 static INIT: std::sync::Once = std::sync::Once::new();
 
-/// Initialize android_logger. Safe to call multiple times.
+/// Initialize android_logger. Safe to call multiple times. The core crate
+/// logs through the `log` facade, so this sink receives everything.
 pub fn init_android_logger() {
     INIT.call_once(|| {
         android_logger::init_once(
@@ -11,8 +10,4 @@ pub fn init_android_logger() {
                 .with_tag("mihomo-ffi"),
         );
     });
-}
-
-pub fn bridge_log(msg: &str) {
-    info!("{}", msg);
 }

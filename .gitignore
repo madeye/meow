@@ -50,3 +50,15 @@ ui_dump*.xml
 
 # Fastlane generated output
 fastlane/report.xml
+
+# Rust (sibling crates)
+core/src/main/rust/mihomo-ffi-core/target/
+core/src/main/rust/mihomo-ohos-ffi/target/
+
+# HarmonyOS (hvigor/DevEco build outputs)
+harmony/**/build/
+harmony/.hvigor/
+harmony/**/oh_modules/
+harmony/entry/libs/
+harmony/**/.preview/
+harmony/local.properties

@@ -12,55 +12,18 @@ unsafe_code = "allow"  # JNI requires unsafe
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 needless_return = "allow"
-# False positive on stable: thread_local! initializer is already wrapped in
-# `const { ... }`, but clippy's pattern-matcher doesn't see through the
-# macro expansion on this version.
-missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
+# Platform-neutral engine core (meow-rs engine + tun2socks + diagnostics).
+# Shared with mihomo-ohos-ffi (HarmonyOS).
+mihomo-ffi-core = { path = "../mihomo-ffi-core" }
+
+# The SocketProtector impl dials through meow-common's hook registry.
 meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
-
-# Explicit pin (transitive through meow-tunnel; surfaced here because
-# engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
-# with the same concrete types meow-tunnel uses internally).
-dashmap = "6"
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-parking_lot = "0.12"
-futures = "0.3"
 
 # Logging
-tracing = { version = "0.1", features = ["log-always"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 log = "0.4"
 android_logger = "0.14"
-
-# YAML / serialization
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-
-# rustls is still needed by `start_engine_async` for the embedded mihomo
-# engine's outbound TLS (Trojan, etc.) — installs the ring crypto provider.
-rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
-
-# Low-level
-libc = "0.2"
-anyhow = "1"
-nix = { version = "0.29", features = ["fs"] }
-
-# tun2socks
-lwip = "0.3"
-
-# Persistent DNS answer cache (single-writer KV at $HOME_DIR/doh-cache.redb;
-# filename retained for backward compatibility).
-redb = "2"
 
 # JNI bridge
 jni = "0.21"
@@ -89,6 +52,7 @@ mimalloc = { version = "0.1", default-features = false }
 #      tcp_close()s so the 20 s FIN_WAIT_2 timeout applies.
 #
 # Matches ../meow-ios/core/rust/meow-ios-ffi. Drop this patch once the fixes
-# land in an upstream lwip release.
+# land in an upstream lwip release. Must be repeated in every leaf crate
+# (patch sections only apply from the build root).
 [patch.crates-io]
 lwip = { git = "https://github.com/madeye/lwip", rev = "dab00c540cf0606fee14ddd99cfa6ec79d33681d" }

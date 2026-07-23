@@ -1,0 +1,97 @@
+[package]
+name = "mihomo-ffi-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+# Raw IPv4/UDP/DNS packet builders + fake-TUN helpers shared by the
+# platform crates' end-to-end tests. Not compiled into release builds.
+testsupport = []
+
+[lints.rust]
+unsafe_code = "allow" # raw TUN fd I/O requires unsafe
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+needless_return = "allow"
+# False positive on stable: thread_local! initializer is already wrapped in
+# `const { ... }`, but clippy's pattern-matcher doesn't see through the
+# macro expansion on this version.
+missing_const_for_thread_local = "allow"
+
+[dependencies]
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
+
+# Explicit pin (transitive through meow-tunnel; surfaced here because
+# engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
+# with the same concrete types meow-tunnel uses internally).
+dashmap = "6"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+parking_lot = "0.12"
+futures = "0.3"
+
+# Logging
+tracing = { version = "0.1", features = ["log-always"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+
+# YAML / serialization
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+
+# rustls is still needed by `start_engine_async` for the embedded mihomo
+# engine's outbound TLS (Trojan, etc.) — installs the ring crypto provider.
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+
+# Low-level
+libc = "0.2"
+anyhow = "1"
+nix = { version = "0.29", features = ["fs"] }
+
+# tun2socks
+lwip = "0.3"
+
+# Persistent DNS answer cache (single-writer KV at $HOME_DIR/doh-cache.redb;
+# filename retained for backward compatibility).
+redb = "2"
+
+[dev-dependencies]
+# Userspace TCP/IP client stack for the host end-to-end tests: speaks raw IP
+# over the fake-TUN socketpair so tests can open real TCP/UDP flows through
+# the lwip netstack + engine without an Android/HarmonyOS device.
+smoltcp = { version = "0.12", default-features = false, features = ["std", "alloc", "medium-ip", "proto-ipv4", "socket-tcp", "socket-udp"] }
+mihomo-ffi-core = { path = ".", features = ["testsupport"] }
+
+# Patched lwip: upstream 0.3.15's `Stream::poll_next` impls
+# (TcpListenerImpl / NetStackImpl / UdpSocket) mutate shared state
+# (queue/rx/waker) WITHOUT holding LWIP_MUTEX, while the lwIP callbacks
+# (tcp_accept_cb / output / udp_recv_cb) mutate the same state under the
+# lock. On a multi-worker runtime this can race: a concurrent VecDeque realloc
+# in TcpListenerImpl::queue can corrupt Box<TcpStreamImpl> ownership and hand
+# out a stream whose mpsc Receiver is freed -> SIGSEGV (use-after-free) in
+# TcpStreamImpl::poll_read under sustained TCP-flow churn. The fork acquires
+# LWIP_MUTEX at the top of each poll_next.
+#
+# rev 5adf5e24 adds two idle-blackout fixes on top:
+#   1. NetStackImpl::poll_flush returned Poll::Pending without a waker on
+#      pbuf_alloc failure, permanently deadlocking the single task that
+#      drives both stack directions. Now drops the frame (IP is lossy).
+#   2. TcpStreamImpl::drop leaked TX-half-closed pcbs in FIN_WAIT_1/2
+#      forever (TF_RXCLOSED unset -> lwIP slowtmr never reaps them); now
+#      tcp_close()s so the 20 s FIN_WAIT_2 timeout applies.
+#
+# Matches ../meow-ios/core/rust/meow-ios-ffi. Drop this patch once the fixes
+# land in an upstream lwip release.
+[patch.crates-io]
+lwip = { git = "https://github.com/madeye/lwip", rev = "dab00c540cf0606fee14ddd99cfa6ec79d33681d" }

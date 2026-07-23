@@ -27,6 +27,13 @@ export JAVA_HOME=/path/to/jdk17
 
 # Run with existing emulator
 SKIP_EMULATOR_BOOT=true ./test-e2e.sh
+
+# HarmonyOS end-to-end verification (no device needed; requires zig OR
+# OHOS_NDK_HOME for the target check; optional SDK build + hdc device stages)
+./test-e2e-ohos.sh
+
+# HarmonyOS device .so (requires the OpenHarmony native SDK)
+OHOS_NDK_HOME=~/Library/OpenHarmony/Sdk/12 harmony/scripts/build-rust-ohos.sh
 ```
 
 **JDK 17 is required** — JDK 25 breaks Kotlin compiler. Set `JAVA_HOME` explicitly.
@@ -39,11 +46,16 @@ SKIP_EMULATOR_BOOT=true ./test-e2e.sh
 # Android lint (Kotlin)
 ./gradlew :mobile:lintDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release
 
-# Rust clippy (from repo root)
-cd core/src/main/rust/mihomo-android-ffi && cargo clippy -- -D warnings && cd -
+# Rust clippy + format check — run in EACH crate you touched (they are
+# sibling crates, not a workspace: mihomo-ffi-core, mihomo-android-ffi,
+# mihomo-ohos-ffi)
+for c in mihomo-ffi-core mihomo-android-ffi mihomo-ohos-ffi; do
+  (cd core/src/main/rust/$c && cargo clippy --all-targets -- -D warnings && cargo fmt --check)
+done
 
-# Rust format check
-cd core/src/main/rust/mihomo-android-ffi && cargo fmt --check && cd -
+# Rust host tests (engine e2e over fake TUN + C ABI e2e)
+(cd core/src/main/rust/mihomo-ffi-core && cargo test)
+(cd core/src/main/rust/mihomo-ohos-ffi && cargo test)
 
 # Flutter analyze
 cd flutter_module && flutter analyze && cd -
@@ -53,24 +65,60 @@ Run Android lint after Kotlin changes, clippy/rustfmt after Rust changes, and fl
 
 ## Architecture
 
-Three-layer stack: **Flutter UI → Kotlin VPN Service → Rust FFI**
+Three-layer stack on both platforms, sharing one native engine core:
 
 ```
-Flutter (Dart)                    MethodChannel("io.github.madeye.meow/vpn")
-    ↕                             EventChannel("io.github.madeye.meow/vpn_state")
-Kotlin (Android)                  EventChannel("io.github.madeye.meow/traffic")
-    ↕ JNI
-Rust (libmihomo_android_ffi.so)   lwip netstack tun2socks + meow-rs engine
+Android: Flutter UI ↔ Kotlin VPN Service ↔ JNI      → libmihomo_android_ffi.so ┐
+HarmonyOS: ArkTS UI ↔ MeowVpnAbility     ↔ NAPI/C++ → libmihomo_ohos_ffi.so    ├─ mihomo-ffi-core
+                                                                               ┘  (lwip tun2socks + meow-rs)
 ```
 
-### Rust FFI (`core/src/main/rust/mihomo-android-ffi/`)
+Android channels: MethodChannel("io.github.madeye.meow/vpn"), EventChannel("…/vpn_state"), EventChannel("…/traffic").
 
-- **lib.rs**: JNI entry points (`Java_io_github_madeye_meow_core_MihomoCore_*`), engine lifecycle (tokio runtime, Tunnel, API server). No SOCKS5/HTTP loopback listener — every TUN flow is dispatched in-process.
-- **tun2socks.rs**: Reads TUN fd packets. UDP/53 is intercepted pre-stack: A/AAAA queries are answered in-process by the engine's `meow_dns::Resolver` (`DnsServer::handle_query`), other qtypes are forwarded to upstream DNS over protected sockets. Everything else feeds the `lwip` netstack — each accepted TCP flow is wrapped as `NetstackConn` (a `ProxyConn` newtype around `lwip::TcpStream`) and handed straight to `meow_tunnel::tcp::handle_tcp(&inner, conn, metadata)`; UDP flows are dispatched to `meow_tunnel::udp::handle_udp` with per-session reply readers.
-- **protect.rs**: Implements `meow_common::SocketProtector` via a JNI shim around `VpnService.protect(int)`. Installed once in `nativeStartTun2Socks`; meow-rs invokes it for every outbound TCP/UDP fd (proxy adapters + the DNS resolver's default `SocketFactory`) before `connect()`/`bind()`.
-- **engine.rs**: `tunnel()` accessor — returns the running `Tunnel` handle so `tun2socks` can dispatch flows through `meow_tunnel::{tcp,udp}` without re-implementing rule routing. Also `strip_and_inject`: strips listener ports, `sniffer:`, and the user `dns:` block from config.yaml and injects the pinned fake-IP DNS block (same pattern as meow-ios).
-- **diagnostics.rs**: JNI-exposed native connectivity probes (`nativeTestDirectTcp`, UDP) used by the Settings diagnostics UI.
-- **logging.rs**: `android_logger` / tracing setup bridging Rust logs to logcat and the in-app log stream.
+### Rust native (`core/src/main/rust/` — three sibling crates, NOT a workspace)
+
+- **mihomo-ffi-core/**: platform-neutral engine core shared by both platform
+  crates. `lib.rs` (state, tokio runtime, engine lifecycle, log ring buffer,
+  `start_engine`/`stop_engine`/`validate_config`/`traffic_snapshot`),
+  `engine.rs` (`tunnel()` accessor + `strip_and_inject`: strips listener
+  ports, `sniffer:`, user `dns:` and injects the pinned fake-IP DNS block,
+  same pattern as meow-ios), `tun2socks.rs` (TUN fd → UDP/53 pre-stack
+  intercept answered by `meow_dns::DnsServer::handle_query` for A/AAAA +
+  upstream passthrough otherwise; everything else feeds the `lwip` netstack
+  and each flow is dispatched in-process via `meow_tunnel::{tcp,udp}` —
+  `NetstackConn` is the `ProxyConn` newtype around `lwip::TcpStream`),
+  `diagnostics.rs` (connectivity probes), `testsupport.rs` (feature-gated
+  fake-TUN + raw-packet helpers for the e2e tests), and `tests/e2e_tun.rs`
+  (host e2e: fake TUN socketpair + smoltcp client → DNS fake-IP round-trip +
+  TCP echo through netstack → tunnel → DIRECT).
+- **mihomo-android-ffi/**: thin JNI surface
+  (`Java_io_github_madeye_meow_core_MihomoCore_*`) + `protect.rs`, the
+  `meow_common::SocketProtector` impl shimming `VpnService.protect(int)` —
+  installed in `nativeStartTun2Socks`, fired for every outbound fd before
+  `connect()`/`bind()`. Also `android_logger` init and the mimalloc global
+  allocator.
+- **mihomo-ohos-ffi/**: C ABI surface (`meow_*` functions) for the HarmonyOS
+  NAPI glue; `crate-type = ["cdylib", "rlib"]` so `tests/c_abi_e2e.rs`
+  exercises the exact C ABI on the host. `protect.rs` stores the ArkTS
+  `VpnConnection.protect` callback — NOTE: meow-rs v0.18.0 compiles the
+  `SocketProtector` registry only for Android (`target_env = "ohos"` is
+  `target_os = "linux"`), so the engine does not yet invoke it per-fd on
+  OpenHarmony; widening that cfg upstream + a tag bump closes the gap.
+  `logging.rs` bridges the `log` facade to hilog (`OH_LOG_Print`).
+- The three crates repeat the same `[patch.crates-io]` lwip pin (patches
+  only apply from the build root). Bumping meow-rs means updating the tag in
+  BOTH mihomo-ffi-core (all `meow-*` lines) and mihomo-android-ffi
+  (`meow-common`).
+
+### HarmonyOS app (`harmony/`)
+
+DevEco Studio (hvigor, API 12) project — see `harmony/README.md`.
+`entry/src/main/cpp/napi_init.cpp` is the NAPI glue (`libmeow.so`) over the
+Rust C ABI (`mihomo_ohos_ffi.h` mirrors `mihomo-ohos-ffi/src/lib.rs`);
+`entry/src/main/ets/vpnability/MeowVpnAbility.ets` is the VPN extension
+(TUN 172.19.0.1/30, DNS 172.19.0.2, same plan as Android);
+`scripts/build-rust-ohos.sh` builds + installs the device .so into
+`entry/libs/<abi>/`.
 
 ### Kotlin Core (`core/src/main/java/io/github/madeye/meow/`)
 
@@ -98,9 +146,12 @@ Rust (libmihomo_android_ffi.so)   lwip netstack tun2socks + meow-rs engine
 
 ```
 mobile → core, flutter
-core → rust (via rust-android-gradle cargo plugin)
-mihomo-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.16.0)
-                   → lwip (patched madeye/lwip rev), jni, android_logger, redb, mimalloc
+core → rust (via rust-android-gradle cargo plugin, module mihomo-android-ffi)
+harmony/entry (libmeow.so NAPI glue) → libmihomo_ohos_ffi.so
+mihomo-android-ffi → mihomo-ffi-core, jni, android_logger, mimalloc, meow-common
+mihomo-ohos-ffi   → mihomo-ffi-core, mimalloc (+ hilog on device)
+mihomo-ffi-core   → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.18.0)
+                  → lwip (patched madeye/lwip rev), redb
 ```
 
 meow-rs crates are pinned by git **tag** in `Cargo.toml` — bumping the engine means changing the tag on every `meow-*` line. Enabled protocol/transport features: `anytls`, `ech-tls-tunnel` (config/proxy) and `tls,ws,ech,grpc,h2,httpupgrade` (transport). Supported proxy protocols: Shadowsocks (with built-in `simple-obfs` and `v2ray-plugin`), Trojan, AnyTLS, Direct.
@@ -108,3 +159,13 @@ meow-rs crates are pinned by git **tag** in `Cargo.toml` — bumping the engine 
 ## E2E Test Structure
 
 `test-e2e.sh` runs 5 tests: tun0 exists, DNS resolution, TCP 1.1.1.1:80, TCP 8.8.8.8:443, HTTP curl to Google generate_204. Uses `ssserver` on host (plain SS, no plugin), pushes a static `curl-aarch64` binary, injects Room database via sqlite3 + `run-as`, triggers VPN via `am start --ez auto_connect true`, accepts VPN consent dialog via uiautomator.
+
+`test-e2e-ohos.sh` verifies the HarmonyOS port without a device: (1) host
+e2e tests that drive the real engine + lwip netstack through a fake TUN fd —
+`mihomo-ffi-core/tests/e2e_tun.rs` (raw-packet DNS fake-IP round-trip +
+full smoltcp TCP echo flow through netstack → tunnel → DIRECT) and
+`mihomo-ohos-ffi/tests/c_abi_e2e.rs` (the exact C ABI the NAPI layer calls);
+(2) `cargo check --target aarch64-unknown-linux-ohos` of the whole native
+stack (OHOS SDK if `OHOS_NDK_HOME` is set, else zig musl stand-in);
+(3) optional device .so build (`OHOS_NDK_HOME`) and (4) optional
+install/launch via `hdc` when a device and built HAP are present.

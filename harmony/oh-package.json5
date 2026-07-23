@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "meow",
+  "version": "1.0.7",
+  "description": "Rule-based proxy client for HarmonyOS (meow-rs engine)",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.19"
+  }
+}

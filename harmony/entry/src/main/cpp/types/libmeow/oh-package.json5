@@ -1,0 +1,6 @@
+{
+  "name": "libmeow.so",
+  "types": "./index.d.ts",
+  "version": "1.0.7",
+  "description": "NAPI bridge to the meow-rs engine (libmihomo_ohos_ffi.so)"
+}
