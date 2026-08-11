@@ -14,19 +14,20 @@ use futures::{SinkExt, StreamExt};
 use meow_common::{ConnType, Metadata, Network, ProxyConn};
 use meow_dns::DnsServer;
 use meow_tunnel::udp::UdpSession;
-use parking_lot::Mutex;
+use parking_lot::{const_mutex, Mutex};
 use std::collections::HashSet;
 use std::io;
 use std::net::SocketAddr;
 use std::os::raw::c_void;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, Notify, Semaphore};
 use tokio::task::JoinHandle;
 use tracing::{trace, warn};
 
@@ -36,6 +37,12 @@ type FlowTasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
 
 static TUN2SOCKS_ACTIVE: AtomicBool = AtomicBool::new(false);
 static TUN2SOCKS_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+// JoinHandle of the current run task, so a rapid stop->start can wait for the
+// previous teardown to finish before flipping ACTIVE (see start).
+static TUN2SOCKS_RUN_HANDLE: Mutex<Option<JoinHandle<()>>> = const_mutex(None);
+// Per-run stop signal: stop() notifies the current run's reader so it wakes
+// from AsyncFd::readable immediately instead of blocking until the next packet.
+static STOP_NOTIFY_SLOT: Mutex<Option<Arc<Notify>>> = const_mutex(None);
 
 const DNS_BURST_CAP: usize = 256;
 const DNS_TASK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -59,7 +66,33 @@ fn warn_capped(slot: &AtomicU64, msg: &str) {
     }
 }
 
+/// Wrapper around a raw TUN fd for AsyncFd. It only lends the fd to
+/// tokio's IO driver for readiness notifications; it never owns/closes the
+/// fd (the Android VpnService manages the fd lifecycle).
+struct TunFd(RawFd);
+
+impl AsRawFd for TunFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
 pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
+    // If a previous run is still tearing down (stop() flipped the flag but the
+    // spawned task hasn't finished aborting flows / awaiting lwIP yet), wait
+    // for it to finish - bounded - before flipping ACTIVE. Without this, a
+    // rapid VPN toggle races the previous teardown and start() returns
+    // "already running", failing the reconnect.
+    {
+        let prev = TUN2SOCKS_RUN_HANDLE.lock().take();
+        if let Some(handle) = prev {
+            let rt = crate::get_runtime();
+            let _ = rt.block_on(async {
+                tokio::time::timeout(Duration::from_millis(800), handle).await
+            });
+        }
+    }
+
     if TUN2SOCKS_ACTIVE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -75,9 +108,16 @@ pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
         libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
     }
 
+    // Fresh per-run stop signal so a latched permit from a previous run can't
+    // bleed into the next one (Notify permits are per-instance).
+    let stop_notify = Arc::new(Notify::new());
+    {
+        *STOP_NOTIFY_SLOT.lock() = Some(stop_notify.clone());
+    }
+
     let rt = crate::get_runtime();
-    rt.spawn(async move {
-        if let Err(e) = run_tun2socks(fd).await {
+    let run_handle = rt.spawn(async move {
+        if let Err(e) = run_tun2socks(fd, stop_notify).await {
             logging::bridge_log(&format!("tun2socks error: {}", e));
         }
         TUN2SOCKS_STOP_REQUESTED.store(false, Ordering::SeqCst);
@@ -85,19 +125,30 @@ pub fn start(fd: i32, _dns_port: u16) -> Result<(), String> {
         logging::bridge_log("tun2socks exited");
     });
 
+    *TUN2SOCKS_RUN_HANDLE.lock() = Some(run_handle);
+
     Ok(())
 }
 
 pub fn stop() {
     TUN2SOCKS_STOP_REQUESTED.store(true, Ordering::SeqCst);
+    if let Some(notify) = STOP_NOTIFY_SLOT.lock().clone() {
+        notify.notify_one();
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Main tun2socks loop
 // ---------------------------------------------------------------------------
 
-async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
+async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
     logging::bridge_log("tun2socks: building lwip netstack");
+
+    // Wrap the TUN fd in AsyncFd for event-driven readiness: the reader waits
+    // for readability instead of busy-polling, and the writer applies
+    // backpressure (waits for writability) instead of dropping on EAGAIN.
+    // TunFd never closes the fd — the Android VpnService owns its lifecycle.
+    let tun_asyncfd = Arc::new(AsyncFd::new(TunFd(fd)).map_err(|e| io::Error::other(e.to_string()))?);
 
     let (mut stack, mut tcp_listener, udp_socket) =
         lwip::NetStack::with_buffer_size(1024, 256).map_err(|e| io::Error::other(e.to_string()))?;
@@ -188,26 +239,49 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
         }
     });
 
+    let tun_asyncfd_w = tun_asyncfd.clone();
     let tun_writer_handle = tokio::spawn(async move {
         while let Some(pkt) = egress_rx.recv().await {
-            let mut retries = 0u32;
+            let mut offset = 0usize;
             loop {
-                let written = unsafe { libc::write(fd, pkt.as_ptr() as *const c_void, pkt.len()) };
-                if written >= 0 {
-                    break;
-                }
-                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if errno == libc::EAGAIN && retries < 3 {
-                    retries += 1;
-                    tokio::task::yield_now().await;
+                let n = unsafe {
+                    libc::write(fd, pkt[offset..].as_ptr() as *const c_void, pkt.len() - offset)
+                };
+                if n >= 0 {
+                    offset += n as usize;
+                    // A 0-byte write on a non-empty buffer is unexpected for a
+                    // TUN fd (writes are atomic: full length or -1/EAGAIN);
+                    // treat it as done to avoid looping forever.
+                    if n == 0 || offset >= pkt.len() {
+                        break;
+                    }
                     continue;
                 }
+                let e = std::io::Error::last_os_error();
+                if e.kind() == std::io::ErrorKind::WouldBlock {
+                    // Backpressure: wait for the TUN fd to become writable
+                    // instead of dropping the packet after a few spins.
+                    let mut guard = match tun_asyncfd_w.writable().await {
+                        Ok(g) => g,
+                        Err(e) => {
+                            logging::bridge_log(&format!("tun2socks: fd writable error: {}", e));
+                            break;
+                        }
+                    };
+                    guard.clear_ready();
+                    continue;
+                }
+                // Hard error: drop the remainder of this packet.
+                logging::bridge_log(&format!("tun2socks: fd write error: {}", e));
                 break;
             }
         }
     });
 
     // TUN reader: reads raw IP packets, intercepts DNS pre-stack.
+    // Event-driven via AsyncFd (see tun_asyncfd): idle traffic costs zero
+    // syscalls instead of busy-polling every 200us.
+    let tun_asyncfd_r = tun_asyncfd.clone();
     let tun_reader_handle = tokio::spawn(async move {
         let mut read_buf = vec![0u8; 65535];
 
@@ -216,16 +290,36 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                 break;
             }
 
-            tokio::task::yield_now().await;
+            // Block until the TUN fd is readable, or a stop is requested.
+            // AsyncFd drives this via the tokio IO driver.
+            let mut guard = tokio::select! {
+                g = tun_asyncfd_r.readable() => match g {
+                    Ok(g) => g,
+                    Err(e) => {
+                        logging::bridge_log(&format!("tun2socks: fd readable error: {}", e));
+                        break;
+                    }
+                },
+                _ = stop_notify.notified() => break,
+            };
 
-            let mut did_work = false;
+            // Drain everything currently available until EAGAIN, then go back
+            // to waiting for readability (clearing the readiness guard so the
+            // IO driver re-registers interest).
             loop {
-                let n =
-                    unsafe { libc::read(fd, read_buf.as_mut_ptr() as *mut c_void, read_buf.len()) };
+                let n = unsafe {
+                    libc::read(fd, read_buf.as_mut_ptr() as *mut c_void, read_buf.len())
+                };
                 if n <= 0 {
+                    if n < 0 {
+                        let e = std::io::Error::last_os_error();
+                        if e.kind() != std::io::ErrorKind::WouldBlock {
+                            logging::bridge_log(&format!("tun2socks: fd read error: {}", e));
+                        }
+                    }
+                    guard.clear_ready();
                     break;
                 }
-                did_work = true;
                 let n = n as usize;
                 let ip_data = &read_buf[..n];
 
@@ -305,10 +399,6 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => break,
                 }
-            }
-
-            if !did_work {
-                tokio::time::sleep(Duration::from_micros(200)).await;
             }
         }
     });
