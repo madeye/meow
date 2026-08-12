@@ -26,4 +26,12 @@ object DataStore {
         get() = prefs.getString("perAppPackages", "[]") ?: "[]"
         set(value) = prefs.edit().putString("perAppPackages", value).apply()
 
+    var blockQuic: Boolean
+        get() = prefs.getBoolean("blockQuic", true)
+        set(value) = prefs.edit().putBoolean("blockQuic", value).apply()
+
+    var disableIpv6: Boolean
+        get() = prefs.getBoolean("disableIpv6", false)
+        set(value) = prefs.edit().putBoolean("disableIpv6", value).apply()
+
 }

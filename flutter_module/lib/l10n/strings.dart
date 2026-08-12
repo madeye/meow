@@ -95,6 +95,11 @@ class S {
   String get network => 'Network';
   String get dnsServer => 'DNS Server';
   String get dnsBuiltIn => 'Plain TCP via tunnel';
+  String get blockQuic => 'Block QUIC';
+  String get blockQuicDesc => 'Block UDP port 443 to force TCP';
+  String get disableIpv6 => 'Disable IPv6';
+  String get disableIpv6Desc => 'Route only IPv4 traffic';
+  String get reconnectToApply => 'Reconnect VPN to apply changes';
   String get about => 'About';
   String get sourceCode => 'Source Code';
   String get sourceCodeUrl => 'github.com/madeye/meow';
@@ -330,6 +335,16 @@ class _Zh extends S {
   String get dnsServer => 'DNS 服务器';
   @override
   String get dnsBuiltIn => '通过隧道走纯 TCP';
+  @override
+  String get blockQuic => '禁用 QUIC';
+  @override
+  String get blockQuicDesc => '阻止 UDP 443 端口，强制使用 TCP';
+  @override
+  String get disableIpv6 => '禁用 IPv6';
+  @override
+  String get disableIpv6Desc => '仅路由 IPv4 流量';
+  @override
+  String get reconnectToApply => '重新连接 VPN 以应用更改';
   @override
   String get about => '关于';
   @override
