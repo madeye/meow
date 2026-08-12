@@ -80,6 +80,16 @@ android {
         }
     }
 
+    // Product flavors: "akari" carries NekoBox-style icon resources
+    // (src/akari/res) that override the defaults in src/main/res/drawable.
+    // "upstream" uses the default icons. All code (ServiceNotification,
+    // MeowTileService, manifest) lives in src/main for both flavors.
+    flavorDimensions += "brand"
+    productFlavors {
+        create("upstream") { dimension = "brand" }
+        create("akari") { dimension = "brand" }
+    }
+
     sourceSets.getByName("androidTest") {
         assets.setSrcDirs(assets.srcDirs + files("$projectDir/schemas"))
     }
@@ -121,11 +131,12 @@ cargo {
 }
 
 tasks.whenTaskAdded {
-    when (name) {
-        "mergeDebugJniLibFolders", "mergeReleaseJniLibFolders" -> {
-            dependsOn("cargoBuild")
-            inputs.dir(layout.buildDirectory.dir("rustJniLibs/android"))
-        }
+    // With the brand product flavors the per-variant jniLib merge tasks are
+    // flavor-qualified (e.g. mergeAkariReleaseJniLibFolders), so match by
+    // suffix instead of an exact name list.
+    if (name.startsWith("merge") && name.endsWith("JniLibFolders")) {
+        dependsOn("cargoBuild")
+        inputs.dir(layout.buildDirectory.dir("rustJniLibs/android"))
     }
 }
 
