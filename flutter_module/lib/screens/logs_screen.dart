@@ -82,7 +82,7 @@ class _LogsScreenState extends State<LogsScreen> {
                         ? Colors.orangeAccent
                         : Colors.white60;
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
                   child: Text(
                     log,
                     style: TextStyle(

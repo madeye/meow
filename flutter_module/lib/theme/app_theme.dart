@@ -127,6 +127,8 @@ ThemeData buildAppTheme(Brightness brightness) {
     scaffoldBackgroundColor: meow.canvas,
     extensions: [meow],
     appBarTheme: AppBarTheme(
+      titleSpacing: 16,
+      actionsPadding: const EdgeInsetsDirectional.only(end: 8),
       backgroundColor: meow.canvas,
       foregroundColor: scheme.onSurface,
       surfaceTintColor: Colors.transparent,

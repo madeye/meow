@@ -117,7 +117,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
                   rx: todayTraffic.rx,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
                 child: _UsageCard(
                   label: s.thisMonth,
@@ -163,7 +163,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
                   rate: _traffic.txRateStr,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
                 child: _StatCard(
                   icon: Icons.arrow_downward,
@@ -181,7 +181,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
           _SectionTitle(s.speedChart),
           const SizedBox(height: 8),
           SizedBox(
-            height: 200,
+            height: 212,
             child: _samples.length < 2
                 ? Center(
                     child: Text(
@@ -193,7 +193,7 @@ class _TrafficScreenState extends State<TrafficScreen> {
                   )
                 : _SpeedChart(samples: _samples),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
         ],
       ),
     );
@@ -287,8 +287,9 @@ class _UsageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final meow = Theme.of(context).extension<MeowColors>()!;
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -372,8 +373,9 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Icon(icon, color: color, size: 28),
@@ -541,9 +543,9 @@ class _DailyChartState extends State<_DailyChart> {
               if (box == null) return;
               final localX = details.localPosition.dx;
               final leftMargin = 44.0;
-              final chartW = box.size.width - leftMargin;
+              final barAreaW = box.size.width - leftMargin - 12;
               if (localX < leftMargin) return;
-              final index = ((localX - leftMargin) / chartW * 30).floor().clamp(
+              final index = ((localX - leftMargin) / barAreaW * 30).floor().clamp(
                 0,
                 29,
               );
@@ -598,6 +600,7 @@ class _DailyChartPainter extends CustomPainter {
     final bottomMargin = 28.0;
     final leftMargin = 44.0;
     final chartW = w - leftMargin;
+    final barAreaW = chartW - 12;
     final chartH = h - bottomMargin;
 
     // Find max
@@ -635,12 +638,12 @@ class _DailyChartPainter extends CustomPainter {
 
     // Bars
     final barCount = days.length;
-    final barWidth = (chartW / barCount) * 0.7;
-    final gap = (chartW / barCount) * 0.3;
+    final barWidth = (barAreaW / barCount) * 0.7;
+    final gap = (barAreaW / barCount) * 0.3;
 
     for (var i = 0; i < barCount; i++) {
       final d = days[i];
-      final x = leftMargin + (chartW / barCount) * i + gap / 2;
+      final x = leftMargin + (barAreaW / barCount) * i + gap / 2;
       final isSelected = i == selectedIndex;
 
       // Download on bottom, upload on top.
@@ -653,9 +656,9 @@ class _DailyChartPainter extends CustomPainter {
       // Highlight background for selected bar
       if (isSelected) {
         final highlightRect = Rect.fromLTWH(
-          leftMargin + (chartW / barCount) * i,
+          leftMargin + (barAreaW / barCount) * i,
           0,
-          chartW / barCount,
+          barAreaW / barCount,
           chartH,
         );
         canvas.drawRect(highlightRect, Paint()..color = highlightColor);
@@ -688,16 +691,19 @@ class _DailyChartPainter extends CustomPainter {
       // X-axis labels (show every 5 days, last day, and selected)
       if (i % 5 == 0 || i == barCount - 1 || isSelected) {
         final dateLabel = d.date.substring(5); // MM-DD
+        final labelStyle = TextStyle(
+          color: isSelected ? emphasisColor : labelColor,
+          fontSize: 8,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        );
+        final isLast = i == barCount - 1;
         _drawText(
           canvas,
           dateLabel,
           Offset(x - 2, chartH + 4),
-          TextStyle(
-            color: isSelected ? emphasisColor : labelColor,
-            fontSize: 8,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          ),
-          40,
+          labelStyle,
+          isLast ? w - (x - 2) : 40,
+          align: isLast ? TextAlign.right : TextAlign.left,
         );
       }
     }
@@ -740,10 +746,12 @@ class _DailyChartPainter extends CustomPainter {
     String text,
     Offset offset,
     TextStyle style,
-    double maxWidth,
-  ) {
+    double maxWidth, {
+    TextAlign align = TextAlign.left,
+  }) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
+      textAlign: align,
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout(maxWidth: maxWidth);
@@ -781,15 +789,18 @@ class _SpeedChart extends StatelessWidget {
       maxRate = max(maxRate, max(s.txRate, s.rxRate));
     }
 
-    return CustomPaint(
-      size: const Size(double.infinity, 200),
-      painter: _ChartPainter(
-        samples: samples,
-        maxRate: maxRate,
-        gridColor: cs.outlineVariant,
-        labelColor: cs.onSurfaceVariant,
-        uploadColor: meow.upload,
-        downloadColor: meow.download,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: CustomPaint(
+        size: const Size(double.infinity, 188),
+        painter: _ChartPainter(
+          samples: samples,
+          maxRate: maxRate,
+          gridColor: cs.outlineVariant,
+          labelColor: cs.onSurfaceVariant,
+          uploadColor: meow.upload,
+          downloadColor: meow.download,
+        ),
       ),
     );
   }
@@ -942,10 +953,12 @@ class _ChartPainter extends CustomPainter {
     String text,
     Offset offset,
     TextStyle style,
-    double maxWidth,
-  ) {
+    double maxWidth, {
+    TextAlign align = TextAlign.left,
+  }) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
+      textAlign: align,
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout(maxWidth: maxWidth);

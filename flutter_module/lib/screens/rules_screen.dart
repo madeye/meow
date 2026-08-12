@@ -68,7 +68,7 @@ class _RulesScreenState extends State<RulesScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
               decoration: InputDecoration(
                 hintText: s.filterRules,

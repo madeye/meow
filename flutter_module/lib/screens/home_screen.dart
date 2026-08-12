@@ -204,6 +204,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       body: CustomScrollView(
+        physics: _groups.isEmpty
+            ? const NeverScrollableScrollPhysics()
+            : const ClampingScrollPhysics(),
         slivers: [
           // App bar with switch
           SliverAppBar(
@@ -229,19 +232,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: isTransitioning
                     ? const Padding(
                         key: ValueKey('spinner'),
-                        padding: EdgeInsets.only(right: 16),
+                        padding: EdgeInsets.only(right: 4),
                         child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          width: 52,
+                          height: 32,
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
                         ),
                       )
-                    : Switch(
+                    : Padding(
                         key: const ValueKey('switch'),
-                        value: isOn,
-                        onChanged: _state.canToggle && !_toggling
-                            ? _toggle
-                            : null,
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Switch(
+                          value: isOn,
+                          onChanged: _state.canToggle && !_toggling
+                              ? _toggle
+                              : null,
+                        ),
                       ),
               ),
             ],
@@ -256,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 8,
+                  vertical: 6,
                 ),
                 child: Row(
                   children: [
@@ -343,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
 
           // Bottom padding
-          const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
         ],
       ),
     );
@@ -370,8 +382,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final color = isOn ? meow.connected : theme.colorScheme.onSurfaceVariant;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Card(
+        margin: EdgeInsets.zero,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -439,8 +452,9 @@ class _TrafficTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Icon(icon, size: 20, color: cs.primary),
@@ -493,8 +507,9 @@ class _ProxyGroupCard extends StatelessWidget {
     final s = S.of(context);
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Card(
+        margin: EdgeInsets.zero,
         child: Column(
           children: [
             ListTile(
