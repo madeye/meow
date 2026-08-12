@@ -70,12 +70,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       var groups = <ProxyGroup>[];
       var proxies = <String, Proxy>{};
       if (state == VpnState.connected) {
-        try {
-          final result = await MihomoApi.instance.getProxies();
-          groups = result.selectableGroups;
-          proxies = result.proxies;
-        } catch (_) {
-          // Engine API not reachable yet — leave the list empty.
+        // The engine reports Connected as soon as the TUN is up, but its
+        // REST controller (127.0.0.1:9090) is bound asynchronously by a
+        // spawned task and may not be listening for a few hundred ms. A
+        // single getProxies() that races that window would leave the group
+        // list empty for the whole session (no further state transition
+        // fires a reload while Connected). Retry briefly until the
+        // controller is up.
+        for (var attempt = 0; attempt < 5; attempt++) {
+          try {
+            final result = await MihomoApi.instance.getProxies();
+            groups = result.selectableGroups;
+            proxies = result.proxies;
+            break;
+          } catch (_) {
+            // Controller not bound yet; back off and retry.
+            if (attempt < 4) {
+              await Future.delayed(const Duration(milliseconds: 500));
+            }
+          }
         }
       }
       if (mounted) {
@@ -116,14 +129,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Run a latency probe across every member of [group] and refresh delays.
-  Future<void> _testGroup(String group) async {
+  /// Run a latency probe across every member of [members] and refresh delays.
+  /// Each member's result is shown as soon as it lands (via
+  /// [_refreshProxyDelays] after each probe), then a final [_loadState]
+  /// reconciles VPN state/profile.
+  Future<void> _testGroup(List<String> members) async {
     try {
-      await MihomoApi.instance.testGroupDelay(group);
+      await MihomoApi.instance.testGroupDelay(
+        members,
+        onMemberDone: _refreshProxyDelays,
+      );
     } catch (_) {
       // Ignore probe failures — surfaced as "--" in the UI.
     }
     await _loadState();
+  }
+
+  /// Re-fetch proxy delays from the engine and reflect them in the UI without
+  /// re-querying VPN state/profile. Used for incremental refresh as each
+  /// per-member delay probe completes.
+  Future<void> _refreshProxyDelays() async {
+    if (_state != VpnState.connected) return;
+    try {
+      final result = await MihomoApi.instance.getProxies();
+      if (mounted) {
+        setState(() {
+          _groups = result.selectableGroups;
+          _proxies = result.proxies;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -302,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _expandedGroup == group.name ? null : group.name;
                   }),
                   onSelect: (node) => _selectNode(group.name, node),
-                  onTest: () => _testGroup(group.name),
+                  onTest: () => _testGroup(group.all),
                 );
               }, childCount: _groups.length),
             ),

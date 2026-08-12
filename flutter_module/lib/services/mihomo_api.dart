@@ -69,30 +69,63 @@ class MihomoApi {
 
   Future<int> testProxyDelay(
     String name, {
-    String url = 'http://www.gstatic.com/generate_204',
+    String url = 'https://cp.cloudflare.com/generate_204',
     int timeoutMs = 5000,
   }) async {
-    final res = await _client.get(_uri(
-      '/proxies/${Uri.encodeComponent(name)}/delay',
-      {'url': url, 'timeout': '$timeoutMs'},
-    ));
-    _assertOk(res, 'testProxyDelay');
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return body['delay'] as int? ?? 0;
+    for (var attempt = 0;; attempt++) {
+      final res = await _client.get(_uri(
+        '/proxies/${Uri.encodeComponent(name)}/delay',
+        {'url': url, 'timeout': '$timeoutMs'},
+      ));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return body['delay'] as int? ?? 0;
+      }
+      // 503 = the engine reports a transient transport error (e.g. the
+      // VPN bypass path is still settling right after cold-start connect,
+      // or a momentary DNS upstream blip). Retry with exponential backoff
+      // (500 ms / 1 s / 2 s) so the user does not see a spurious failure
+      // during the settling window. 504 (timeout) and 404 (not found) are
+      // not transient — fail fast via _assertOk.
+      if (res.statusCode == 503 && attempt < 3) {
+        await Future.delayed(Duration(milliseconds: 500 << attempt));
+        continue;
+      }
+      _assertOk(res, 'testProxyDelay');
+    }
   }
 
-  Future<Map<String, int>> testGroupDelay(
-    String group, {
-    String url = 'http://www.gstatic.com/generate_204',
+  /// Probe every member of [members] for latency concurrently.
+  ///
+  /// Probes each member individually via /proxies/{name}/delay instead of the
+  /// /group/{name}/delay batch endpoint. The batch endpoint returns HTTP 504
+  /// and discards *every* member's result when a single one times out
+  /// (matching upstream mihomo's getGroupDelay), so one dead proxy would blank
+  /// out the whole group in the speed-test panel. Per-member probing keeps
+  /// each result independent. The per-member timeout defaults to 60 s
+  /// (matching the upstream batch endpoint) so slow-but-alive protocols
+  /// like REALITY/Vision aren't cut off; a dead member only stalls its own
+  /// result, not the whole group. When [onMemberDone] is supplied it is
+  /// awaited after each member's probe (success or failure), so the caller
+  /// can refresh the UI incrementally as delays land rather than waiting
+  /// for the whole group.
+  Future<void> testGroupDelay(
+    List<String> members, {
+    String url = 'https://cp.cloudflare.com/generate_204',
     int timeoutMs = 60000, // 60s for large groups with many proxies
+    Future<void> Function()? onMemberDone,
   }) async {
-    final res = await _client.get(_uri(
-      '/group/${Uri.encodeComponent(group)}/delay',
-      {'url': url, 'timeout': '$timeoutMs'},
-    ));
-    _assertOk(res, 'testGroupDelay');
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return body.map((k, v) => MapEntry(k, (v as num?)?.toInt() ?? 0));
+    await Future.wait(
+      members.map((name) async {
+        try {
+          await testProxyDelay(name, url: url, timeoutMs: timeoutMs);
+        } catch (_) {
+          // Per-member failure (timeout/transport): the engine already
+          // recorded 0 into the proxy's health handle; keep probing the rest.
+        }
+        await onMemberDone?.call();
+      }),
+    );
   }
 
   // -------------------------------------------------------------------------
