@@ -69,7 +69,9 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               setState(() {
-                if (value == 'selectAll') {
+                if (value == 'showSystem') {
+                  _showSystemApps = !_showSystemApps;
+                } else if (value == 'selectAll') {
                   _selectedPackages.addAll(filtered.map((a) => a['packageName'] as String));
                 } else {
                   _selectedPackages.removeAll(filtered.map((a) => a['packageName'] as String));
@@ -77,6 +79,10 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
               });
             },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'showSystem',
+                child: Text(_showSystemApps ? s.perAppHideSystem : s.perAppShowSystem),
+              ),
               PopupMenuItem(value: 'selectAll', child: Text(s.perAppSelectAll)),
               PopupMenuItem(value: 'deselectAll', child: Text(s.perAppDeselectAll)),
             ],
@@ -120,26 +126,14 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          decoration: InputDecoration(
-                            hintText: s.perAppSearch,
-                            prefixIcon: const Icon(Icons.search),
-                            isDense: true,
-                            border: const OutlineInputBorder(),
-                          ),
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: Text(s.perAppShowSystem),
-                        selected: _showSystemApps,
-                        onSelected: (v) => setState(() => _showSystemApps = v),
-                      ),
-                    ],
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: s.perAppSearch,
+                      prefixIcon: const Icon(Icons.search),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -227,10 +221,10 @@ class _AppTileState extends State<_AppTile> {
       future: _iconFuture,
       builder: (context, snap) {
         final icon = snap.data;
-        return CheckboxListTile(
-          value: widget.selected,
-          onChanged: (v) => widget.onChanged(v ?? false),
-          secondary: SizedBox(
+        return ListTile(
+          onTap: () => widget.onChanged(!widget.selected),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          leading: SizedBox(
             width: 40,
             height: 40,
             child: icon != null
@@ -240,6 +234,12 @@ class _AppTileState extends State<_AppTile> {
           title: Text(widget.appName, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(widget.packageName, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12)),
+          trailing: Checkbox(
+            value: widget.selected,
+            onChanged: (v) => widget.onChanged(v ?? false),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
         );
       },
     );

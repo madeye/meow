@@ -160,6 +160,7 @@ class S {
   String get perAppModeBypass => 'Bypass Selected';
   String get perAppSearch => 'Search apps...';
   String get perAppShowSystem => 'Show system apps';
+  String get perAppHideSystem => 'Hide system apps';
   String get perAppSelectAll => 'Select All';
   String get perAppDeselectAll => 'Deselect All';
   String perAppSelected(int count) => '$count selected';
@@ -443,6 +444,8 @@ class _Zh extends S {
   String get perAppSearch => '搜索应用...';
   @override
   String get perAppShowSystem => '显示系统应用';
+  @override
+  String get perAppHideSystem => '隐藏系统应用';
   @override
   String get perAppSelectAll => '全选';
   @override

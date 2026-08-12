@@ -202,7 +202,7 @@ class _StatusBar extends StatelessWidget {
     final color = valid ? Colors.greenAccent : Colors.redAccent;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: color.withAlpha(20),
         border: Border(top: BorderSide(color: color.withAlpha(80))),

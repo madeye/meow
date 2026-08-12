@@ -27,6 +27,10 @@ class MihomoApp extends StatelessWidget {
       ],
       theme: buildAppTheme(Brightness.light),
       darkTheme: buildAppTheme(Brightness.dark),
+      builder: (context, child) => ScrollConfiguration(
+        behavior: const _NoStretchScrollBehavior(),
+        child: child!,
+      ),
       home: const MainScreen(),
     );
   }
@@ -74,5 +78,21 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Disables the Material 3 overscroll stretch effect, which visually distorts
+/// content when a scrollable hits its top/bottom boundary. Falls back to the
+/// classic clamping behavior with no stretch deformation.
+class _NoStretchScrollBehavior extends MaterialScrollBehavior {
+  const _NoStretchScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
   }
 }

@@ -6,6 +6,7 @@ import '../l10n/strings.dart';
 import '../services/vpn_channel.dart';
 import '../models/profile.dart';
 import 'yaml_editor_screen.dart';
+import '../theme/app_theme.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
@@ -52,6 +53,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (_) => const _SubscriptionDialog(),
+      barrierColor: Colors.black54,
     );
     if (result != null) {
       try {
@@ -291,8 +293,9 @@ class _ProfileTile extends StatelessWidget {
     // it's surfaced live on the Home tab from the engine REST API. This tile
     // only manages the subscription itself (select / edit / refresh / delete).
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         leading: Icon(
           p.selected ? Icons.check_circle : Icons.circle_outlined,
           color: p.selected
@@ -312,6 +315,7 @@ class _ProfileTile extends StatelessWidget {
           ],
         ),
         trailing: PopupMenuButton<String>(
+          child: Icon(Icons.adaptive.more),
           onSelected: (v) {
             switch (v) {
               case 'select': onSelect();
@@ -386,16 +390,23 @@ class _SubscriptionDialogState extends State<_SubscriptionDialog> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final isEdit = widget.name != null;
+    final meow = Theme.of(context).extension<MeowColors>()!;
     return AlertDialog(
+      backgroundColor: meow.card,
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       title: Text(isEdit ? s.editSubscription : s.addSubscription),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _nameCtrl,
-            decoration: InputDecoration(labelText: s.name, hintText: 'My Server'),
+            decoration: InputDecoration(
+              labelText: s.name,
+              hintText: 'My Server',
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           TextField(
             controller: _urlCtrl,
             decoration: InputDecoration(
