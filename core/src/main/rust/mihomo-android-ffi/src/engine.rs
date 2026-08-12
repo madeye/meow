@@ -70,6 +70,17 @@ nameserver:
 pub fn strip_and_inject(yaml: &str) -> Result<String> {
     let mut doc: serde_yaml::Value = serde_yaml::from_str(yaml).context("parsing config YAML")?;
     if let serde_yaml::Value::Mapping(m) = &mut doc {
+        // Check for top-level ipv6: false so we can propagate it into the
+        // pinned DNS block. meow-rs's resolver reads ipv6 from the dns:
+        // section, not the top-level key — a top-level ipv6: false alone
+        // does not suppress AAAA fake-IP allocation and can leave the
+        // resolver in a half-initialised state where queries are accepted
+        // but no fake-IP is ever returned.
+        let ipv6_disabled = m
+            .get(serde_yaml::Value::String("ipv6".into()))
+            .and_then(|v| v.as_bool())
+            == Some(false);
+
         for key in [
             "port",
             "socks-port",
@@ -81,7 +92,17 @@ pub fn strip_and_inject(yaml: &str) -> Result<String> {
         ] {
             m.remove(serde_yaml::Value::String(key.to_string()));
         }
-        if let serde_yaml::Value::Mapping(dns) = pinned_dns_block() {
+        if let serde_yaml::Value::Mapping(mut dns) = pinned_dns_block() {
+            if ipv6_disabled {
+                dns.insert(
+                    serde_yaml::Value::String("ipv6".into()),
+                    serde_yaml::Value::Bool(false),
+                );
+                dns.insert(
+                    serde_yaml::Value::String("prefer-ipv4".into()),
+                    serde_yaml::Value::Bool(true),
+                );
+            }
             m.insert(
                 serde_yaml::Value::String("dns".into()),
                 serde_yaml::Value::Mapping(dns),

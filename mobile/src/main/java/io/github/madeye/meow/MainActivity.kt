@@ -333,6 +333,17 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         DataStore.perAppPackages = packages
                         result.success(null)
                     }
+                    "getNetworkPrefs" -> {
+                        result.success(mapOf(
+                            "blockQuic" to DataStore.blockQuic,
+                            "disableIpv6" to DataStore.disableIpv6,
+                        ))
+                    }
+                    "setNetworkPrefs" -> {
+                        DataStore.blockQuic = call.argument<Boolean>("blockQuic") ?: false
+                        DataStore.disableIpv6 = call.argument<Boolean>("disableIpv6") ?: false
+                        result.success(null)
+                    }
                     "getLogs" -> {
                         val raw = try {
                             io.github.madeye.meow.core.MihomoCore.nativeGetLogs()

@@ -5,6 +5,7 @@ import io.github.madeye.meow.Core
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.core.MihomoCore
 import io.github.madeye.meow.database.ClashProfile
+import io.github.madeye.meow.preference.DataStore
 import timber.log.Timber
 import java.io.File
 
@@ -74,8 +75,26 @@ class MihomoInstance(val profile: ClashProfile) {
         // `sniffer:`, and the user `dns:` block are stripped (and the pinned
         // fake-IP DNS block injected) on the Rust side by
         // `engine::strip_and_inject` — see meow-ios for the same pattern.
-        val yaml = profile.yamlContent
+        var yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
+
+        if (DataStore.disableIpv6) {
+            // Replace any existing top-level ipv6: line, or inject at the
+            // top of the file if absent. mihomo uses this to disable IPv6
+            // resolution and connectivity globally.
+            yaml = if (Regex("(?m)^ipv6:").containsMatchIn(yaml)) {
+                yaml.replace(Regex("(?m)^ipv6:.*"), "ipv6: false")
+            } else {
+                "ipv6: false\n" + yaml
+            }
+        }
+
+        if (DataStore.blockQuic) {
+            // Block QUIC (UDP/443) to force apps back to TCP, which is
+            // reliably proxied. The AND rule ensures only UDP is matched.
+            yaml = yaml.replace(Regex("(?m)^rules:\r?\n"), "rules:\n  - AND,((NETWORK,udp),(DST-PORT,443)),REJECT\n")
+        }
+
         configFile.writeText(yaml)
         MihomoCore.nativeSetHomeDir(configDir.absolutePath)
         val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "")

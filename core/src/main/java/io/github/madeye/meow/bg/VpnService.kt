@@ -85,9 +85,12 @@ class VpnService : BaseVpnService(), BaseService.Interface {
             .setMtu(VPN_MTU)
             .addAddress(PRIVATE_VLAN4_CLIENT, 30)
             .addDnsServer(PRIVATE_VLAN4_ROUTER)
-            .addAddress(PRIVATE_VLAN6_CLIENT, 126)
             .addRoute("0.0.0.0", 0)
-            .addRoute("::", 0)
+
+        if (!DataStore.disableIpv6) {
+            builder.addAddress(PRIVATE_VLAN6_CLIENT, 126)
+            builder.addRoute("::", 0)
+        }
 
         // Per-app VPN routing
         val perAppPackages: Set<String> = try {
