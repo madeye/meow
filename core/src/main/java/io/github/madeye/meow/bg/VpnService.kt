@@ -10,7 +10,6 @@ import io.github.madeye.meow.net.DefaultNetworkListener
 import io.github.madeye.meow.preference.DataStore
 import org.json.JSONArray
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import android.net.VpnService as BaseVpnService
@@ -34,6 +33,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         ServiceNotification(this, profileName, "service-vpn")
 
     private var conn: ParcelFileDescriptor? = null
+    @Volatile
     private var active = false
     private var metered = false
     @Volatile
@@ -49,7 +49,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     override fun killProcesses(scope: CoroutineScope) {
         super.killProcesses(scope)
         active = false
-        scope.launch { DefaultNetworkListener.stop(this) }
+        DefaultNetworkListener.stop()
         conn?.close()
         conn = null
     }
@@ -59,7 +59,17 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
     override suspend fun preInit() {
         if (prepare(this) != null) throw NullConnectionException()
-        DefaultNetworkListener.start(this) { underlyingNetwork = it }
+        DefaultNetworkListener.start(this) { network ->
+            if (network != underlyingNetwork) {
+                underlyingNetwork = network
+                // Pass a single-element array for the active network, or an
+                // empty array when all underlying connectivity is lost so the
+                // platform clears the VPN's transport association instead of
+                // keeping a stale network reference.
+                setUnderlyingNetworks(if (network != null) arrayOf(network) else arrayOf())
+                Timber.d("VpnService: underlying network changed -> ${network}")
+            }
+        }
     }
 
     override suspend fun startProcesses() {
@@ -116,21 +126,28 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         active = true
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(metered)
 
-        val conn = builder.establish() ?: throw NullConnectionException()
-        this.conn = conn
-        // Tell the system which networks the VPN sits on top of. Without
-        // this, `VpnService.protect(fd)` knows the bypass mark to apply but
-        // the platform's per-network firewall has no associated network for
-        // the marked traffic, so packets are silently dropped on Xiaomi /
-        // HyperOS builds. Prefer the listener's tracked default network;
-        // fall back to ConnectivityManager.getActiveNetwork() so we still
-        // have an underlying network on the first establish (the listener's
-        // first onAvailable can race the establish call).
+        // Capture the underlying network BEFORE establish() — after the VPN
+        // is up, ConnectivityManager.getActiveNetwork() may return the VPN
+        // network itself, which we must not pass to setUnderlyingNetworks.
         val underlying = underlyingNetwork ?: run {
             val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
                 as android.net.ConnectivityManager
-            cm.activeNetwork
+            cm.activeNetwork?.let { an ->
+                cm.getNetworkCapabilities(an)?.let { nc ->
+                    if (!nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) an else null
+                }
+            }
         }
+
+        val conn = builder.establish() ?: throw NullConnectionException()
+        this.conn = conn
+        // Tell the system which network the VPN sits on top of. Without
+        // this, VpnService.protect(fd) knows the bypass mark to apply but
+        // the platform's per-network firewall has no associated network for
+        // the marked traffic, so packets are silently dropped on Xiaomi /
+        // HyperOS builds.  We pass a single best network (prefer WiFi) so the
+        // VPN transport label stays clean and Settings shows the
+        // correct underlying connection.
         underlying?.let { setUnderlyingNetworks(arrayOf(it)) }
         Timber.d("VpnService: setUnderlyingNetworks=$underlying")
         data.mihomoInstance!!.startTun2Socks(this, conn.fd)
