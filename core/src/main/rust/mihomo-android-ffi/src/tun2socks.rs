@@ -252,11 +252,11 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                             let qtype = parse_dns_qtype(parsed.payload);
 
                             let response_payload = if matches!(qtype, Some(1) | Some(28)) {
-                                let Some(resolver) = crate::DNS_RESOLVER.get() else {
+                                let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone()) else {
                                     trace!("tun2socks: DNS dropped — resolver not ready");
                                     return;
                                 };
-                                match DnsServer::handle_query(parsed.payload, resolver).await {
+                                match DnsServer::handle_query(parsed.payload, &resolver).await {
                                     Ok(bytes) => bytes,
                                     Err(e) => {
                                         trace!("tun2socks: DnsServer::handle_query error: {}", e);
