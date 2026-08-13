@@ -25,18 +25,6 @@ android {
         applicationId = "io.github.madeye.meow"
     }
 
-    // Product flavors: "akari" overrides icon resources (src/akari/res)
-    // and sets applicationId. "upstream" uses defaults from src/main.
-    // Namespace stays io.github.madeye.meow for both flavors -- the Rust JNI
-    // symbols (Java_io_github_madeye_meow_core_*) are bound to the namespace.
-    flavorDimensions += "brand"
-    productFlavors {
-        create("upstream") { dimension = "brand" }
-        create("akari") {
-            dimension = "brand"
-        }
-    }
-
     val keystorePath = prop("KEYSTORE_PATH")
     val keystoreFile = keystorePath?.let { File(it) }
 
