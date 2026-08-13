@@ -78,15 +78,11 @@ class MihomoInstance(val profile: ClashProfile) {
         var yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
 
-        if (DataStore.disableIpv6) {
-            // Replace any existing top-level ipv6: line, or inject at the
-            // top of the file if absent. mihomo uses this to disable IPv6
-            // resolution and connectivity globally.
-            yaml = if (Regex("(?m)^ipv6:").containsMatchIn(yaml)) {
-                yaml.replace(Regex("(?m)^ipv6:.*"), "ipv6: false")
-            } else {
-                "ipv6: false\n" + yaml
-            }
+        val ipv6 = "ipv6: ${!DataStore.disableIpv6}"
+        yaml = if (Regex("(?m)^ipv6:").containsMatchIn(yaml)) {
+            yaml.replace(Regex("(?m)^ipv6:.*"), ipv6)
+        } else {
+            "$ipv6\n$yaml"
         }
 
         if (DataStore.blockQuic) {
