@@ -18,13 +18,13 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
+meow-tunnel = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-config = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
+meow-dns = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-api = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-common = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-transport = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality"] }
+meow-proxy = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new

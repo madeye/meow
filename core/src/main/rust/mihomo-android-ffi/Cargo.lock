@@ -859,7 +859,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1885,7 +1885,7 @@ dependencies = [
 [[package]]
 name = "meow-anytls"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1915,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "meow-api"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "axum",
  "base64",
@@ -1948,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "meow-common"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1972,7 +1972,7 @@ dependencies = [
 [[package]]
 name = "meow-config"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2006,7 +2006,7 @@ dependencies = [
 [[package]]
 name = "meow-dns"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -2034,7 +2034,7 @@ dependencies = [
 [[package]]
 name = "meow-proxy"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2081,7 +2081,7 @@ dependencies = [
 [[package]]
 name = "meow-rules"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "ipnet",
  "iprange",
@@ -2098,7 +2098,7 @@ dependencies = [
 [[package]]
 name = "meow-transport"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -2124,12 +2124,12 @@ dependencies = [
 [[package]]
 name = "meow-trie"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 
 [[package]]
 name = "meow-tunnel"
 version = "0.20.1"
-source = "git+https://github.com/madeye/meow-rs.git?tag=v0.20.1#c5557577fd181e8535d721662c189bec166a21b3"
+source = "git+https://github.com/aimkiray/meow-rs.git?rev=f7a11d423435d8c959042a73ae8ddec8dd09d978#f7a11d423435d8c959042a73ae8ddec8dd09d978"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -2315,7 +2315,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2627,7 +2627,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.3",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4079,7 +4079,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
