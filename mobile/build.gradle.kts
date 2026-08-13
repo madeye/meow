@@ -22,7 +22,21 @@ android {
     namespace = "io.github.madeye.meow"
 
     defaultConfig {
-        applicationId = "io.github.madeye.meow"
+        applicationId = "io.github.akari.meow"
+
+        // Overlay (uncommitted): restrict packaged native libs to the requested
+        // ABI so a single-arch build does not ship Flutter's multi-ABI
+        // libflutter.so/libapp.so as dead weight.
+        val targetAbi = findProperty("TARGET_ABI")?.toString()
+        if (targetAbi != null) {
+            val abiMap = mapOf(
+                "arm" to "armeabi-v7a",
+                "arm64" to "arm64-v8a",
+                "x86" to "x86",
+                "x86_64" to "x86_64",
+            )
+            ndk { abiFilters += abiMap[targetAbi]!! }
+        }
     }
 
     // Product flavors: "akari" overrides icon resources (src/akari/res)
