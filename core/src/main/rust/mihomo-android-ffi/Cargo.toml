@@ -18,13 +18,13 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
+meow-tunnel = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-config = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
+meow-dns = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-api = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-common = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978" }
+meow-transport = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality"] }
+meow-proxy = { git = "https://github.com/aimkiray/meow-rs.git", rev = "f7a11d423435d8c959042a73ae8ddec8dd09d978", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
@@ -92,21 +92,3 @@ mimalloc = { version = "0.1", default-features = false }
 # land in an upstream lwip release.
 [patch.crates-io]
 lwip = { git = "https://github.com/madeye/lwip", rev = "dab00c540cf0606fee14ddd99cfa6ec79d33681d" }
-
-# Experiment: pull ALL meow-* crates from the local meow-rs clone (branch
-# fix/dns-pool-aaaa-skip = the upstream PR content: set_ipv6_disabled +
-# AAAA skip + TCP exchange pool). Simulates "upstream meow-rs accepted
-# the PR" so the FFI builds with zero separate patch crate. Drop this
-# block once the PR is tagged and the [dependencies] pin is bumped.
-[patch."https://github.com/madeye/meow-rs.git"]
-meow-common   = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-common" }
-meow-trie     = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-trie" }
-meow-anytls   = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-anytls" }
-meow-dns      = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-dns" }
-meow-rules    = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-rules" }
-meow-transport = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-transport" }
-meow-proxy    = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-proxy" }
-meow-tunnel   = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-tunnel" }
-meow-listener = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-listener" }
-meow-api      = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-api" }
-meow-config   = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-config" }

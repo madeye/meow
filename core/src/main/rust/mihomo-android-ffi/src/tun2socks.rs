@@ -349,7 +349,8 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
                             let qtype = parse_dns_qtype(parsed.payload);
 
                             let response_payload = if matches!(qtype, Some(1) | Some(28)) {
-                                let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone()) else {
+                                let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone())
+                                else {
                                     trace!("tun2socks: DNS dropped — resolver not ready");
                                     return;
                                 };
