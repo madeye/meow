@@ -34,6 +34,12 @@ class ProxyGroup {
             .map((e) => ProxyHistory.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+
+  /// Delay from the most recent history entry; 0 if none.  Mirrors
+  /// [Proxy.latestDelay] so a group member that is itself a group (e.g. a
+  /// Selector composed of sub-policy-groups) exposes its last probe delay
+  /// the same way a leaf proxy does.
+  int get latestDelay => history.isNotEmpty ? history.last.delay : 0;
 }
 
 /// Result of GET /proxies, split into proxy groups and leaf proxies.
