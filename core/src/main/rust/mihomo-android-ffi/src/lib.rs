@@ -146,6 +146,17 @@ fn install_tracing_subscriber() {
 // it stays bounded while the screen is closed (oldest lines dropped first).
 // ---------------------------------------------------------------------------
 
+#[no_mangle]
+pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetIpv6Disabled(
+    _env: JNIEnv,
+    _class: JClass,
+    disabled: jboolean,
+) {
+    let disabled = disabled == JNI_TRUE;
+    meow_dns::set_ipv6_disabled(disabled);
+    logging::bridge_log(&format!("nativeSetIpv6Disabled: {disabled}"));
+}
+
 const LOG_BUFFER_CAP: usize = 2000;
 
 fn log_buffer() -> &'static Mutex<std::collections::VecDeque<String>> {

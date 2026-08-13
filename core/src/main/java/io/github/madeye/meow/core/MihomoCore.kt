@@ -8,6 +8,7 @@ object MihomoCore {
 
     external fun nativeInit()
     external fun nativeSetHomeDir(dir: String)
+    external fun nativeSetIpv6Disabled(disabled: Boolean)
     external fun nativeStartEngine(addr: String, secret: String): Int
     external fun nativeStopEngine()
     external fun nativeStartTun2Socks(vpnService: Any, fd: Int, dnsPort: Int): Int

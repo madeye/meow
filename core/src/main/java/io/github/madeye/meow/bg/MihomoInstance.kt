@@ -97,6 +97,7 @@ class MihomoInstance(val profile: ClashProfile) {
 
         configFile.writeText(yaml)
         MihomoCore.nativeSetHomeDir(configDir.absolutePath)
+        MihomoCore.nativeSetIpv6Disabled(DataStore.disableIpv6)
         val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "")
         if (result != 0) {
             throw RuntimeException("Failed to start engine: ${MihomoCore.nativeGetLastError()}")
