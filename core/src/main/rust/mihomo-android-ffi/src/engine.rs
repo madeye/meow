@@ -81,10 +81,7 @@ pub fn strip_and_inject(yaml: &str) -> Result<String> {
         ] {
             m.remove(serde_yaml::Value::String(key.to_string()));
         }
-        m.insert(
-            serde_yaml::Value::String("dns".into()),
-            pinned_dns_block(),
-        );
+        m.insert(serde_yaml::Value::String("dns".into()), pinned_dns_block());
     }
     serde_yaml::to_string(&doc).context("serializing stripped config YAML")
 }
