@@ -94,6 +94,7 @@ class _NetworkPrefsTogglesState extends State<_NetworkPrefsToggles> {
 
   bool? _blockQuic;
   bool? _disableIpv6;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -109,23 +110,39 @@ class _NetworkPrefsTogglesState extends State<_NetworkPrefsToggles> {
   }
 
   Future<void> _update(bool blockQuic, bool disableIpv6) async {
-    setState(() {
-      _blockQuic = blockQuic;
-      _disableIpv6 = disableIpv6;
-    });
-    await _method.invokeMethod('setNetworkPrefs', {
-      'blockQuic': blockQuic,
-      'disableIpv6': disableIpv6,
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(S.of(context).reconnectToApply),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(48, 0, 48, 80),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    setState(() => _saving = true);
+    try {
+      await _method.invokeMethod('setNetworkPrefs', {
+        'blockQuic': blockQuic,
+        'disableIpv6': disableIpv6,
+      });
+      if (mounted) {
+        setState(() {
+          _blockQuic = blockQuic;
+          _disableIpv6 = disableIpv6;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(S.of(context).reconnectToApply),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(48, 0, 48, 80),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        final message = error is PlatformException
+            ? error.message ?? error.code
+            : error.toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(S.of(context).networkPrefsSaveFailed(message)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -139,7 +156,7 @@ class _NetworkPrefsTogglesState extends State<_NetworkPrefsToggles> {
           title: Text(s.blockQuic),
           subtitle: Text(s.blockQuicDesc),
           value: _blockQuic ?? false,
-          onChanged: _blockQuic == null
+          onChanged: _blockQuic == null || _saving
               ? null
               : (v) => _update(v, _disableIpv6!),
         ),
@@ -148,7 +165,7 @@ class _NetworkPrefsTogglesState extends State<_NetworkPrefsToggles> {
           title: Text(s.disableIpv6),
           subtitle: Text(s.disableIpv6Desc),
           value: _disableIpv6 ?? false,
-          onChanged: _disableIpv6 == null
+          onChanged: _disableIpv6 == null || _saving
               ? null
               : (v) => _update(_blockQuic!, v),
         ),

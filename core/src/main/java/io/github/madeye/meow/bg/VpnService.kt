@@ -1,5 +1,6 @@
 package io.github.madeye.meow.bg
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Network
@@ -21,6 +22,40 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         private const val PRIVATE_VLAN4_ROUTER = "172.19.0.2"
         private const val PRIVATE_VLAN6_CLIENT = "fdfe:dcba:9876::1"
         private const val PRIVATE_VLAN6_ROUTER = "fdfe:dcba:9876::2"
+        private const val EXTRA_BLOCK_QUIC = "block_quic"
+        private const val EXTRA_DISABLE_IPV6 = "disable_ipv6"
+        private const val EXTRA_PER_APP_MODE = "per_app_mode"
+        private const val EXTRA_PER_APP_PACKAGES = "per_app_packages"
+
+        fun startIntent(context: Context): Intent = RuntimeSettings(
+            blockQuic = DataStore.blockQuic,
+            disableIpv6 = DataStore.disableIpv6,
+            perAppMode = DataStore.perAppMode,
+            perAppPackages = DataStore.perAppPackages,
+        ).toIntent(context)
+    }
+
+    private data class RuntimeSettings(
+        val blockQuic: Boolean = true,
+        val disableIpv6: Boolean = false,
+        val perAppMode: String = "proxy",
+        val perAppPackages: String = "[]",
+    ) {
+        fun toIntent(context: Context) = Intent(context, VpnService::class.java).apply {
+            putExtra(EXTRA_BLOCK_QUIC, blockQuic)
+            putExtra(EXTRA_DISABLE_IPV6, disableIpv6)
+            putExtra(EXTRA_PER_APP_MODE, perAppMode)
+            putExtra(EXTRA_PER_APP_PACKAGES, perAppPackages)
+        }
+
+        companion object {
+            fun fromIntent(intent: Intent?) = RuntimeSettings(
+                blockQuic = intent?.getBooleanExtra(EXTRA_BLOCK_QUIC, true) ?: true,
+                disableIpv6 = intent?.getBooleanExtra(EXTRA_DISABLE_IPV6, false) ?: false,
+                perAppMode = intent?.getStringExtra(EXTRA_PER_APP_MODE) ?: "proxy",
+                perAppPackages = intent?.getStringExtra(EXTRA_PER_APP_PACKAGES) ?: "[]",
+            )
+        }
     }
 
     inner class NullConnectionException : NullPointerException(), BaseService.ExpectedException {
@@ -38,6 +73,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     private var metered = false
     @Volatile
     private var underlyingNetwork: Network? = null
+    private var runtimeSettings = RuntimeSettings()
 
     override fun onBind(intent: Intent) = when (intent.action) {
         SERVICE_INTERFACE -> super<BaseVpnService>.onBind(intent)
@@ -54,8 +90,16 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         conn = null
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        super<BaseService.Interface>.onStartCommand(intent, flags, startId)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (data.state == BaseService.State.Stopped) {
+            runtimeSettings = RuntimeSettings.fromIntent(intent)
+        }
+        return super<BaseService.Interface>.onStartCommand(intent, flags, startId)
+    }
+
+    override fun startRunner() {
+        startService(runtimeSettings.toIntent(this))
+    }
 
     override suspend fun preInit() {
         if (prepare(this) != null) throw NullConnectionException()
@@ -75,7 +119,12 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     override suspend fun startProcesses() {
         val configDir = File(Core.deviceStorage.noBackupFilesDir, "meow")
         configDir.mkdirs()
-        data.mihomoInstance!!.start(configDir, this)
+        data.mihomoInstance!!.start(
+            configDir,
+            this,
+            runtimeSettings.blockQuic,
+            runtimeSettings.disableIpv6,
+        )
         startVpn()
     }
 
@@ -89,14 +138,14 @@ class VpnService : BaseVpnService(), BaseService.Interface {
             .addDnsServer(PRIVATE_VLAN4_ROUTER)
             .addRoute("0.0.0.0", 0)
 
-        if (!DataStore.disableIpv6) {
+        if (!runtimeSettings.disableIpv6) {
             builder.addAddress(PRIVATE_VLAN6_CLIENT, 126)
             builder.addRoute("::", 0)
         }
 
         // Per-app VPN routing
         val perAppPackages: Set<String> = try {
-            JSONArray(DataStore.perAppPackages).let { arr ->
+            JSONArray(runtimeSettings.perAppPackages).let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }.toSet()
             }
         } catch (_: Exception) { emptySet() }
@@ -109,7 +158,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         // the whole app's uid would also exempt traffic users may want to
         // intercept (e.g. a built-in browser preview) and would shadow the
         // protect path the rest of the stack is designed around.
-        if (perAppPackages.isNotEmpty()) when (DataStore.perAppMode) {
+        if (perAppPackages.isNotEmpty()) when (runtimeSettings.perAppMode) {
             "proxy" -> {
                 // Only selected apps go through VPN.
                 for (pkg in perAppPackages) {

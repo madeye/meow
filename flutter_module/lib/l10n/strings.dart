@@ -100,6 +100,8 @@ class S {
   String get disableIpv6 => 'Disable IPv6';
   String get disableIpv6Desc => 'Route only IPv4 traffic';
   String get reconnectToApply => 'Reconnect VPN to apply changes';
+  String networkPrefsSaveFailed(String error) =>
+      'Could not save network settings: $error';
   String get about => 'About';
   String get sourceCode => 'Source Code';
   String get sourceCodeUrl => 'github.com/madeye/meow';
@@ -346,6 +348,8 @@ class _Zh extends S {
   String get disableIpv6Desc => '仅路由 IPv4 流量';
   @override
   String get reconnectToApply => '重新连接 VPN 以应用更改';
+  @override
+  String networkPrefsSaveFailed(String error) => '网络设置保存失败：$error';
   @override
   String get about => '关于';
   @override

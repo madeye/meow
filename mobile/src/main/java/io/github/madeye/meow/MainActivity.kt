@@ -340,9 +340,18 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         ))
                     }
                     "setNetworkPrefs" -> {
-                        DataStore.blockQuic = call.argument<Boolean>("blockQuic") ?: false
-                        DataStore.disableIpv6 = call.argument<Boolean>("disableIpv6") ?: false
-                        result.success(null)
+                        val blockQuic = call.argument<Boolean>("blockQuic") ?: false
+                        val disableIpv6 = call.argument<Boolean>("disableIpv6") ?: false
+                        scope.launch {
+                            val saved = withContext(Dispatchers.IO) {
+                                DataStore.setNetworkPrefs(blockQuic, disableIpv6)
+                            }
+                            if (saved) {
+                                result.success(null)
+                            } else {
+                                result.error("PREFS_WRITE_FAILED", "Could not save network settings", null)
+                            }
+                        }
                     }
                     "getLogs" -> {
                         val raw = try {
@@ -397,7 +406,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     private fun startVpn() {
-        startService(Intent(this, io.github.madeye.meow.bg.VpnService::class.java))
+        startService(io.github.madeye.meow.bg.VpnService.startIntent(this))
     }
 
     @Deprecated("Use Activity Result API")
