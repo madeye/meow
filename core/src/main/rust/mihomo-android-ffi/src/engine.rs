@@ -34,11 +34,12 @@ pub fn tunnel() -> Option<Tunnel> {
 /// of truth for synthesis, reverse mapping, AAAA / hosts / NXDOMAIN, and
 /// upstream nameserver selection.
 ///
-/// Nameserver pool is restricted to CN-side resolvers because mihomo's
+/// Nameserver pool is restricted to CN-side DoH resolvers because mihomo's
 /// `query_pool` races every entry in parallel ("first response wins"), and
 /// mixing a global anycast resolver into the same pool lets it win the race
 /// from outside CN — returning the global / SG / HK PoP for split-horizon
-/// hosts like xiaohongshu.com.
+/// hosts like xiaohongshu.com. Each endpoint uses an IP dial target with an
+/// explicit TLS name, avoiding both blocked TCP/53 and a bootstrap lookup.
 ///
 /// `listen: 127.0.0.1:1053` binds mihomo's `DnsServer` on a loopback UDP
 /// socket. tun2socks no longer parses DNS payloads or calls
@@ -56,8 +57,8 @@ listen: ""
 enhanced-mode: fake-ip
 fake-ip-range: 28.0.0.0/8
 nameserver:
-  - tcp://119.29.29.29
-  - tcp://223.5.5.5
+  - https://1.12.12.12/dns-query#doh.pub
+  - https://223.5.5.5/dns-query#dns.alidns.com
 "#;
     serde_yaml::from_str(yaml).expect("pinned DNS YAML is a compile-time constant")
 }
