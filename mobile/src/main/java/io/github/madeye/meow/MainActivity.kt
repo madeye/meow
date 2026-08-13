@@ -386,7 +386,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     private fun startVpn() {
-        startService(Intent(this, io.github.madeye.meow.bg.VpnService::class.java))
+        startService(io.github.madeye.meow.bg.VpnService.startIntent(this))
     }
 
     @Deprecated("Use Activity Result API")

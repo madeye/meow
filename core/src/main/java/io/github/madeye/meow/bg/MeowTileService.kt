@@ -75,7 +75,7 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
                 ?.let { startActivity(it) }
             return
         }
-        val intent = Intent(this, VpnService::class.java)
+        val intent = VpnService.startIntent(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {

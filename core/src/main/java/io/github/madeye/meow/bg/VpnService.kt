@@ -1,5 +1,6 @@
 package io.github.madeye.meow.bg
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Network
@@ -22,6 +23,8 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         private const val PRIVATE_VLAN4_ROUTER = "172.19.0.2"
         private const val PRIVATE_VLAN6_CLIENT = "fdfe:dcba:9876::1"
         private const val PRIVATE_VLAN6_ROUTER = "fdfe:dcba:9876::2"
+
+        fun startIntent(context: Context) = Intent(context, VpnService::class.java)
     }
 
     inner class NullConnectionException : NullPointerException(), BaseService.ExpectedException {
