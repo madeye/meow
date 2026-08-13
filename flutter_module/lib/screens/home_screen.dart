@@ -28,6 +28,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // truth for what groups exist and which node each one currently selects.
   List<ProxyGroup> _groups = [];
   Map<String, Proxy> _proxies = {};
+  // Most recent per-member delay from the last group speed test, keyed by
+  // member name. /proxies/{group}/delay does not persist into a sub-group's
+  // history, so the display reads this authoritative value instead.
+  final Map<String, int> _delays = {};
   String? _expandedGroup;
   StreamSubscription? _stateSub;
   StreamSubscription? _trafficSub;
@@ -134,13 +138,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// [_refreshProxyDelays] after each probe), then a final [_loadState]
   /// reconciles VPN state/profile.
   Future<void> _testGroup(List<String> members) async {
+    // Drop stale results for the members being re-tested so the UI shows
+    // them as untested until each fresh probe lands.
+    for (final m in members) {
+      _delays.remove(m);
+    }
+    if (mounted) setState(() {});
     try {
       await MihomoApi.instance.testGroupDelay(
         members,
-        onMemberDone: _refreshProxyDelays,
+        onMemberDone: (name, delay) {
+          _delays[name] = delay;
+          return _refreshProxyDelays();
+        }
       );
     } catch (_) {
-      // Ignore probe failures — surfaced as "--" in the UI.
+      // Ignore probe failures — surfaced as untested in the UI.
     }
     await _loadState();
   }
@@ -201,6 +214,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final isOn = _state == VpnState.connected;
     final isTransitioning =
         _state == VpnState.connecting || _state == VpnState.stopping;
+    // Name -> group lookup so a group member that is itself a sub-group can
+    // resolve its delay (leaf members live in _proxies, sub-groups here).
+    final groupMap = {for (final g in _groups) g.name: g};
 
     return Scaffold(
       body: CustomScrollView(
@@ -330,7 +346,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 final group = _groups[index];
                 return _ProxyGroupCard(
                   group: group,
-                  proxies: _proxies,
+                  delayOf: (name) => _delays[name] ??
+                      _proxies[name]?.latestDelay ??
+                      groupMap[name]?.latestDelay ??
+                      0,
                   expanded: _expandedGroup == group.name,
                   onToggleExpand: () => setState(() {
                     _expandedGroup =
@@ -473,7 +492,9 @@ class _TrafficTile extends StatelessWidget {
 /// lists every member with its latest latency and lets the user pick one.
 class _ProxyGroupCard extends StatelessWidget {
   final ProxyGroup group;
-  final Map<String, Proxy> proxies;
+  // Resolves a member name to its latest delay (ms, 0 = untested). Abstracts
+  // over leaf proxies and sub-group members — see the home screen builder.
+  final int Function(String) delayOf;
   final bool expanded;
   final VoidCallback onToggleExpand;
   final ValueChanged<String> onSelect;
@@ -481,7 +502,7 @@ class _ProxyGroupCard extends StatelessWidget {
 
   const _ProxyGroupCard({
     required this.group,
-    required this.proxies,
+    required this.delayOf,
     required this.expanded,
     required this.onToggleExpand,
     required this.onSelect,
@@ -526,7 +547,7 @@ class _ProxyGroupCard extends StatelessWidget {
             if (expanded)
               ...group.all.map((name) {
                 final selected = name == group.now;
-                final delay = proxies[name]?.latestDelay ?? 0;
+                final delay = delayOf(name);
                 return ListTile(
                   dense: true,
                   contentPadding:

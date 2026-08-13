@@ -113,17 +113,24 @@ class MihomoApi {
     List<String> members, {
     String url = 'https://cp.cloudflare.com/generate_204',
     int timeoutMs = 60000, // 60s for large groups with many proxies
-    Future<void> Function()? onMemberDone,
+    Future<void> Function(String name, int delay)? onMemberDone,
   }) async {
+    // Return each member's measured delay to the caller rather than relying
+    // on a /proxies history re-fetch: probing /proxies/{group}/delay for a
+    // member that is itself a sub-group returns the delay but (in this
+    // engine) does NOT persist it into the group's history field, so a
+    // history-based display would stay blank for sub-group members.  The
+    // returned value is authoritative for the just-run probe.
     await Future.wait(
       members.map((name) async {
+        var delay = 0;
         try {
-          await testProxyDelay(name, url: url, timeoutMs: timeoutMs);
+          delay = await testProxyDelay(name, url: url, timeoutMs: timeoutMs);
         } catch (_) {
-          // Per-member failure (timeout/transport): the engine already
-          // recorded 0 into the proxy's health handle; keep probing the rest.
+          // Per-member failure (timeout/transport): leave delay 0
+          // (untested) and keep probing the rest.
         }
-        await onMemberDone?.call();
+        await onMemberDone?.call(name, delay);
       }),
     );
   }
