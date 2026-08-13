@@ -5,7 +5,6 @@ import io.github.madeye.meow.Core
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.core.MihomoCore
 import io.github.madeye.meow.database.ClashProfile
-import io.github.madeye.meow.preference.DataStore
 import timber.log.Timber
 import java.io.File
 
@@ -60,7 +59,12 @@ class MihomoInstance(val profile: ClashProfile) {
     private var prevRx: Long = 0
     private var lastUpdate: Long = 0
 
-    fun start(configDir: File, vpnService: android.net.VpnService) {
+    fun start(
+        configDir: File,
+        vpnService: android.net.VpnService,
+        blockQuic: Boolean,
+        disableIpv6: Boolean,
+    ) {
         // Seed the engine home dir with bundled GeoX databases so meow-rs
         // never has to reach the network on first start — the upstream
         // pre-VPN fetch in meow-config goes via raw github.com which is
@@ -78,14 +82,14 @@ class MihomoInstance(val profile: ClashProfile) {
         var yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
 
-        val ipv6 = "ipv6: ${!DataStore.disableIpv6}"
+        val ipv6 = "ipv6: ${!disableIpv6}"
         yaml = if (Regex("(?m)^ipv6:").containsMatchIn(yaml)) {
             yaml.replace(Regex("(?m)^ipv6:.*"), ipv6)
         } else {
             "$ipv6\n$yaml"
         }
 
-        if (DataStore.blockQuic) {
+        if (blockQuic) {
             // Block QUIC (UDP/443) to force apps back to TCP, which is
             // reliably proxied. The AND rule ensures only UDP is matched.
             yaml = yaml.replace(Regex("(?m)^rules:\r?\n"), "rules:\n  - AND,((NETWORK,udp),(DST-PORT,443)),REJECT\n")
