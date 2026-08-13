@@ -76,7 +76,6 @@ pub(crate) struct EngineState {
 
 pub(crate) static ENGINE: Mutex<Option<EngineState>> = Mutex::new(None);
 pub(crate) static HOME_DIR: Mutex<Option<String>> = Mutex::new(None);
-pub(crate) static DNS_RESOLVER: OnceLock<Arc<meow_dns::Resolver>> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
 // Thread-local error message
@@ -285,8 +284,6 @@ async fn start_engine_async(
     meow_common::set_host_resolver(Arc::new(meow_dns::ResolverHostHook::new(Arc::clone(
         &config.dns.resolver,
     ))));
-
-    let _ = DNS_RESOLVER.set(config.dns.resolver.clone());
 
     let raw_config = Arc::new(RwLock::new(config.raw.clone()));
     let tunnel = Tunnel::new(config.dns.resolver.clone());
