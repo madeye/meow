@@ -49,12 +49,20 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         }
 
         companion object {
-            fun fromIntent(intent: Intent?) = RuntimeSettings(
-                blockQuic = intent?.getBooleanExtra(EXTRA_BLOCK_QUIC, true) ?: true,
-                disableIpv6 = intent?.getBooleanExtra(EXTRA_DISABLE_IPV6, false) ?: false,
-                perAppMode = intent?.getStringExtra(EXTRA_PER_APP_MODE) ?: "proxy",
-                perAppPackages = intent?.getStringExtra(EXTRA_PER_APP_PACKAGES) ?: "[]",
-            )
+            fun fromIntent(intent: Intent?): RuntimeSettings? {
+                if (intent == null ||
+                    !intent.hasExtra(EXTRA_BLOCK_QUIC) ||
+                    !intent.hasExtra(EXTRA_DISABLE_IPV6) ||
+                    !intent.hasExtra(EXTRA_PER_APP_MODE) ||
+                    !intent.hasExtra(EXTRA_PER_APP_PACKAGES)
+                ) return null
+                return RuntimeSettings(
+                    blockQuic = intent.getBooleanExtra(EXTRA_BLOCK_QUIC, true),
+                    disableIpv6 = intent.getBooleanExtra(EXTRA_DISABLE_IPV6, false),
+                    perAppMode = intent.getStringExtra(EXTRA_PER_APP_MODE) ?: "proxy",
+                    perAppPackages = intent.getStringExtra(EXTRA_PER_APP_PACKAGES) ?: "[]",
+                )
+            }
         }
     }
 
@@ -92,7 +100,11 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (data.state == BaseService.State.Stopped) {
-            runtimeSettings = RuntimeSettings.fromIntent(intent)
+            runtimeSettings = RuntimeSettings.fromIntent(intent) ?: run {
+                Timber.e("VpnService: refusing start without runtime settings snapshot")
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
         }
         return super<BaseService.Interface>.onStartCommand(intent, flags, startId)
     }
@@ -110,7 +122,9 @@ class VpnService : BaseVpnService(), BaseService.Interface {
                 // empty array when all underlying connectivity is lost so the
                 // platform clears the VPN's transport association instead of
                 // keeping a stale network reference.
-                setUnderlyingNetworks(if (network != null) arrayOf(network) else arrayOf())
+                if (active) {
+                    setUnderlyingNetworks(if (network != null) arrayOf(network) else arrayOf())
+                }
                 Timber.d("VpnService: underlying network changed -> $network")
             }
         }
@@ -175,7 +189,6 @@ class VpnService : BaseVpnService(), BaseService.Interface {
             }
         }
 
-        active = true
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(metered)
 
         // Capture the underlying network BEFORE establish() — after the VPN
@@ -193,6 +206,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
         val conn = builder.establish() ?: throw NullConnectionException()
         this.conn = conn
+        active = true
         // Tell the system which network the VPN sits on top of. Without
         // this, VpnService.protect(fd) knows the bypass mark to apply but
         // the platform's per-network firewall has no associated network for
@@ -200,8 +214,9 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         // HyperOS builds.  We pass a single best network (prefer WiFi) so
         // the VPN transport label stays clean and Settings shows the
         // correct underlying connection.
-        underlying?.let { setUnderlyingNetworks(arrayOf(it)) }
-        Timber.d("VpnService: setUnderlyingNetworks=$underlying")
+        val currentUnderlying = underlyingNetwork ?: underlying
+        currentUnderlying?.let { setUnderlyingNetworks(arrayOf(it)) }
+        Timber.d("VpnService: setUnderlyingNetworks=$currentUnderlying")
         data.mihomoInstance!!.startTun2Socks(this, conn.fd)
     }
 

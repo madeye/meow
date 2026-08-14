@@ -19,6 +19,7 @@ import java.util.Locale
 import io.github.madeye.meow.preference.DataStore
 import io.github.madeye.meow.subscription.SubscriptionService
 import androidx.core.view.WindowCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -406,7 +407,10 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     private fun startVpn() {
-        startService(io.github.madeye.meow.bg.VpnService.startIntent(this))
+        ContextCompat.startForegroundService(
+            this,
+            io.github.madeye.meow.bg.VpnService.startIntent(this),
+        )
     }
 
     @Deprecated("Use Activity Result API")
