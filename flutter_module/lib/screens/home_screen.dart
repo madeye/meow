@@ -32,6 +32,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // member name. /proxies/{group}/delay does not persist into a sub-group's
   // history, so the display reads this authoritative value instead.
   final Map<String, int> _delays = {};
+  final Map<String, Object> _testingGroups = {};
+  int _delayGeneration = 0;
   String? _expandedGroup;
   StreamSubscription? _stateSub;
   StreamSubscription? _trafficSub;
@@ -44,7 +46,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     profileChanged.addListener(_loadState);
     _stateSub = _vpn.stateStream.listen((s) {
       final wasConnected = _state == VpnState.connected;
-      if (mounted) setState(() => _state = s);
+      if (mounted) {
+        setState(() {
+          _state = s;
+          if (s != VpnState.connected) {
+            _delayGeneration++;
+            _delays.clear();
+            _testingGroups.clear();
+          }
+        });
+      }
       // Once the engine is up, (re)load proxy groups from its REST API.
       if (!wasConnected && s == VpnState.connected) {
         _loadState();
@@ -97,6 +108,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       if (mounted) {
         setState(() {
+          if (state != VpnState.connected || _profile?.id != profile?.id) {
+            _delayGeneration++;
+            _delays.clear();
+            _testingGroups.clear();
+          }
           _state = state;
           _profile = profile;
           _groups = groups;
@@ -134,44 +150,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Run a latency probe across every member of [members] and refresh delays.
-  /// Each member's result is shown as soon as it lands (via
-  /// [_refreshProxyDelays] after each probe), then a final [_loadState]
-  /// reconciles VPN state/profile.
-  Future<void> _testGroup(List<String> members) async {
+  /// Each member's result is shown as soon as it lands, then a final
+  /// [_loadState] reconciles VPN state/profile.
+  Future<void> _testGroup(String groupName, List<String> members) async {
+    if (_testingGroups.containsKey(groupName)) return;
+    final token = Object();
+    final generation = _delayGeneration;
+    _testingGroups[groupName] = token;
     // Drop stale results for the members being re-tested so the UI shows
     // them as untested until each fresh probe lands.
-    for (final m in members) {
-      _delays.remove(m);
-    }
-    if (mounted) setState(() {});
+    setState(() {
+      for (final member in members) {
+        _delays.remove(member);
+      }
+    });
     try {
       await MihomoApi.instance.testGroupDelay(
         members,
-        onMemberDone: (name, delay) {
-          _delays[name] = delay;
-          return _refreshProxyDelays();
-        }
+        onMemberDone: (name, delay) async {
+          if (mounted &&
+              generation == _delayGeneration &&
+              _state == VpnState.connected) {
+            setState(() => _delays[name] = delay);
+          }
+        },
       );
     } catch (_) {
       // Ignore probe failures — surfaced as untested in the UI.
     }
-    await _loadState();
-  }
-
-  /// Re-fetch proxy delays from the engine and reflect them in the UI without
-  /// re-querying VPN state/profile. Used for incremental refresh as each
-  /// per-member delay probe completes.
-  Future<void> _refreshProxyDelays() async {
-    if (_state != VpnState.connected) return;
-    try {
-      final result = await MihomoApi.instance.getProxies();
+    if (generation == _delayGeneration) {
+      await _loadState();
+    }
+    if (identical(_testingGroups[groupName], token)) {
       if (mounted) {
-        setState(() {
-          _groups = result.selectableGroups;
-          _proxies = result.proxies;
-        });
+        setState(() => _testingGroups.remove(groupName));
+      } else {
+        _testingGroups.remove(groupName);
       }
-    } catch (_) {}
+    }
   }
 
   @override
@@ -356,7 +372,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _expandedGroup == group.name ? null : group.name;
                   }),
                   onSelect: (node) => _selectNode(group.name, node),
-                  onTest: () => _testGroup(group.all),
+                  testing: _testingGroups.containsKey(group.name),
+                  onTest: () => _testGroup(group.name, group.all),
                 );
               }, childCount: _groups.length),
             ),
@@ -496,6 +513,7 @@ class _ProxyGroupCard extends StatelessWidget {
   // over leaf proxies and sub-group members — see the home screen builder.
   final int Function(String) delayOf;
   final bool expanded;
+  final bool testing;
   final VoidCallback onToggleExpand;
   final ValueChanged<String> onSelect;
   final VoidCallback onTest;
@@ -504,6 +522,7 @@ class _ProxyGroupCard extends StatelessWidget {
     required this.group,
     required this.delayOf,
     required this.expanded,
+    required this.testing,
     required this.onToggleExpand,
     required this.onSelect,
     required this.onTest,
@@ -535,9 +554,14 @@ class _ProxyGroupCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.speed, size: 20),
+                    icon: testing
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.speed, size: 20),
                     tooltip: s.urlTestAll,
-                    onPressed: onTest,
+                    onPressed: testing ? null : onTest,
                   ),
                   Icon(expanded ? Icons.expand_less : Icons.expand_more),
                 ],

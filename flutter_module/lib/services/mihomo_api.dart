@@ -76,7 +76,8 @@ class MihomoApi {
       final res = await _client.get(_uri(
         '/proxies/${Uri.encodeComponent(name)}/delay',
         {'url': url, 'timeout': '$timeoutMs'},
-      ));
+      ))
+          .timeout(Duration(milliseconds: timeoutMs + 2000));
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         return body['delay'] as int? ?? 0;
@@ -102,17 +103,16 @@ class MihomoApi {
   /// and discards *every* member's result when a single one times out
   /// (matching upstream mihomo's getGroupDelay), so one dead proxy would blank
   /// out the whole group in the speed-test panel. Per-member probing keeps
-  /// each result independent. The per-member timeout defaults to 60 s
-  /// (matching the upstream batch endpoint) so slow-but-alive protocols
-  /// like REALITY/Vision aren't cut off; a dead member only stalls its own
-  /// result, not the whole group. When [onMemberDone] is supplied it is
-  /// awaited after each member's probe (success or failure), so the caller
-  /// can refresh the UI incrementally as delays land rather than waiting
-  /// for the whole group.
+  /// each result independent. The per-member timeout defaults to 15 s,
+  /// which leaves enough time for slow protocol handshakes without making a
+  /// dead member hold the group busy for a full minute. When [onMemberDone]
+  /// is supplied it is awaited after each member's probe (success or failure),
+  /// so the caller can refresh the UI incrementally as delays land rather than
+  /// waiting for the whole group.
   Future<void> testGroupDelay(
     List<String> members, {
     String url = 'https://cp.cloudflare.com/generate_204',
-    int timeoutMs = 60000, // 60s for large groups with many proxies
+    int timeoutMs = 15000,
     Future<void> Function(String name, int delay)? onMemberDone,
   }) async {
     // Return each member's measured delay to the caller rather than relying
