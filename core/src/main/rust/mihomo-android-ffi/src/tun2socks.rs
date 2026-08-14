@@ -46,6 +46,7 @@ static STOP_NOTIFY_SLOT: Mutex<Option<Arc<Notify>>> = const_mutex(None);
 
 const DNS_BURST_CAP: usize = 256;
 const DNS_TASK_TIMEOUT: Duration = Duration::from_secs(5);
+const TUN_EGRESS_CAP: usize = 256;
 static DNS_CAP_LOG_LAST_MS: AtomicU64 = AtomicU64::new(0);
 
 const DNS_PASSTHROUGH_UPSTREAMS: &[&str] = &["119.29.29.29:53", "223.5.5.5:53"];
@@ -160,7 +161,7 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
         Arc::new(Mutex::new(HashSet::new()));
 
     let (stack_ingress_tx, mut stack_ingress_rx) = mpsc::channel::<AnyIpPktFrame>(256);
-    let (egress_tx, mut egress_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (egress_tx, mut egress_rx) = mpsc::channel::<Vec<u8>>(TUN_EGRESS_CAP);
     let dns_sem = Arc::new(Semaphore::new(DNS_BURST_CAP));
     let flow_tasks: FlowTasks = Arc::new(Mutex::new(Vec::new()));
 
@@ -188,7 +189,11 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
                 }
                 pkt = stack.next() => {
                     match pkt {
-                        Some(Ok(frame)) => { let _ = egress_tx_lwip.send(frame); }
+                        Some(Ok(frame)) => {
+                            if egress_tx_lwip.send(frame).await.is_err() {
+                                break;
+                            }
+                        }
                         Some(Err(e)) => {
                             logging::bridge_log(&format!("stack recv error: {}", e));
                             break;
@@ -241,7 +246,10 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
 
     let tun_asyncfd_w = tun_asyncfd.clone();
     let tun_writer_handle = tokio::spawn(async move {
-        while let Some(pkt) = egress_rx.recv().await {
+        'tun_packets: while let Some(pkt) = egress_rx.recv().await {
+            if TUN2SOCKS_STOP_REQUESTED.load(Ordering::SeqCst) {
+                break;
+            }
             let mut offset = 0usize;
             loop {
                 let n = unsafe {
@@ -265,12 +273,19 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
                 if e.kind() == std::io::ErrorKind::WouldBlock {
                     // Backpressure: wait for the TUN fd to become writable
                     // instead of dropping the packet after a few spins.
-                    let mut guard = match tun_asyncfd_w.writable().await {
-                        Ok(g) => g,
-                        Err(e) => {
+                    let mut guard = match tokio::select! {
+                        result = tun_asyncfd_w.writable() => Some(result),
+                        _ = tokio::time::sleep(Duration::from_millis(50)) => None,
+                    } {
+                        Some(Ok(g)) => g,
+                        Some(Err(e)) => {
                             logging::bridge_log(&format!("tun2socks: fd writable error: {}", e));
                             break;
                         }
+                        None if TUN2SOCKS_STOP_REQUESTED.load(Ordering::SeqCst) => {
+                            break 'tun_packets;
+                        }
+                        None => continue,
                     };
                     guard.clear_ready();
                     continue;
@@ -311,6 +326,9 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
             // to waiting for readability (clearing the readiness guard so the
             // IO driver re-registers interest).
             loop {
+                if TUN2SOCKS_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    break;
+                }
                 let n =
                     unsafe { libc::read(fd, read_buf.as_mut_ptr() as *mut c_void, read_buf.len()) };
                 if n <= 0 {
@@ -382,7 +400,7 @@ async fn run_tun2socks(fd: RawFd, stop_notify: Arc<Notify>) -> io::Result<()> {
                             else {
                                 return;
                             };
-                            let _ = egress.send(reply_pkt);
+                            let _ = egress.send(reply_pkt).await;
                         };
                         if tokio::time::timeout(DNS_TASK_TIMEOUT, work).await.is_err() {
                             trace!(
