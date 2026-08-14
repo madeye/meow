@@ -50,12 +50,20 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         }
 
         companion object {
-            fun fromIntent(intent: Intent?) = RuntimeSettings(
-                blockQuic = intent?.getBooleanExtra(EXTRA_BLOCK_QUIC, true) ?: true,
-                disableIpv6 = intent?.getBooleanExtra(EXTRA_DISABLE_IPV6, false) ?: false,
-                perAppMode = intent?.getStringExtra(EXTRA_PER_APP_MODE) ?: "proxy",
-                perAppPackages = intent?.getStringExtra(EXTRA_PER_APP_PACKAGES) ?: "[]",
-            )
+            fun fromIntent(intent: Intent?): RuntimeSettings? {
+                if (intent == null ||
+                    !intent.hasExtra(EXTRA_BLOCK_QUIC) ||
+                    !intent.hasExtra(EXTRA_DISABLE_IPV6) ||
+                    !intent.hasExtra(EXTRA_PER_APP_MODE) ||
+                    !intent.hasExtra(EXTRA_PER_APP_PACKAGES)
+                ) return null
+                return RuntimeSettings(
+                    blockQuic = intent.getBooleanExtra(EXTRA_BLOCK_QUIC, true),
+                    disableIpv6 = intent.getBooleanExtra(EXTRA_DISABLE_IPV6, false),
+                    perAppMode = intent.getStringExtra(EXTRA_PER_APP_MODE) ?: "proxy",
+                    perAppPackages = intent.getStringExtra(EXTRA_PER_APP_PACKAGES) ?: "[]",
+                )
+            }
         }
     }
 
@@ -92,7 +100,11 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (data.state == BaseService.State.Stopped) {
-            runtimeSettings = RuntimeSettings.fromIntent(intent)
+            runtimeSettings = RuntimeSettings.fromIntent(intent) ?: run {
+                Timber.e("VpnService: refusing start without runtime settings snapshot")
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
         }
         return super<BaseService.Interface>.onStartCommand(intent, flags, startId)
     }
