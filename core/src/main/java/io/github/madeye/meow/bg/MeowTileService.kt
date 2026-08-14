@@ -8,6 +8,7 @@ import android.service.quicksettings.TileService as BaseTileService
 import androidx.annotation.RequiresApi
 import io.github.madeye.meow.aidl.MihomoConnection
 import io.github.madeye.meow.aidl.TrafficStats
+import timber.log.Timber
 import io.github.madeye.meow.core.R
 import io.github.madeye.meow.utils.Action
 
@@ -69,6 +70,7 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
 
     private fun toggle() {
         val tile = qsTile ?: return
+        Timber.i("MeowTileService.toggle state=${tile.state}")
         when (tile.state) {
             Tile.STATE_INACTIVE -> startVpn()
             Tile.STATE_ACTIVE -> sendBroadcast(Intent(Action.CLOSE).setPackage(packageName))
@@ -83,11 +85,10 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
             return
         }
         val intent = VpnService.startIntent(this)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        // Plain startService (see MainActivity.startVpn): the VPN service
+        // stays alive through the VPN framework; HyperOS denies FGS starts
+        // for apps outside its autostart allowlist.
+        startService(intent)
         updateTile(BaseService.State.Connecting, "")
         connection.connect(this, this)
     }

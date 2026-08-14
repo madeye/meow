@@ -83,6 +83,11 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     private var underlyingNetwork: Network? = null
     private var runtimeSettings = RuntimeSettings()
 
+    override fun onCreate() {
+        Timber.i("VpnService.onCreate")
+        super.onCreate()
+    }
+
     override fun onBind(intent: Intent) = when (intent.action) {
         SERVICE_INTERFACE -> super<BaseVpnService>.onBind(intent)
         else -> super<BaseService.Interface>.onBind(intent)
@@ -99,6 +104,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Timber.i("VpnService.onStartCommand state=${data.state} startId=$startId")
         if (data.state == BaseService.State.Stopped) {
             runtimeSettings = RuntimeSettings.fromIntent(intent) ?: run {
                 Timber.e("VpnService: refusing start without runtime settings snapshot")

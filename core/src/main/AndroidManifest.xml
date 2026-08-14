@@ -8,15 +8,22 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application>
         <service
             android:name="io.github.madeye.meow.bg.VpnService"
             android:exported="false"
-            android:foregroundServiceType="systemExempted"
+            android:foregroundServiceType="specialUse"
             android:process=":vpn"
             android:permission="android.permission.BIND_VPN_SERVICE">
+            <!-- Android 15+ denies systemExempted FGS starts to third-party
+                 apps (getFgsAllowStart_new=DENIED even at PROC_STATE_TOP),
+                 so the VPN service can never start; specialUse is the
+                 supported type for user-initiated VPN sessions. -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn-tunnel" />
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>

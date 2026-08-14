@@ -407,10 +407,11 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     private fun startVpn() {
-        ContextCompat.startForegroundService(
-            this,
-            io.github.madeye.meow.bg.VpnService.startIntent(this),
-        )
+        // Plain startService, not startForegroundService: the VpnService is
+        // exempt from background execution limits once establish() runs, and
+        // HyperOS denies FGS starts (getFgsAllowStart=DENIED) for apps not in
+        // its autostart allowlist, which would make the VPN unstartable.
+        startService(io.github.madeye.meow.bg.VpnService.startIntent(this))
     }
 
     @Deprecated("Use Activity Result API")
