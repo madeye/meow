@@ -21,7 +21,9 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
 
     override fun onStartListening() {
         super.onStartListening()
-        connection.connect(this, this)
+        if (!connection.connect(this, this, autoCreate = false)) {
+            updateTile(BaseService.State.Stopped, "")
+        }
     }
 
     override fun onStopListening() {
@@ -31,6 +33,11 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
 
     override fun onClick() {
         if (isLocked) unlockAndRun(this::toggle) else toggle()
+    }
+
+    override fun onTileAdded() {
+        super.onTileAdded()
+        updateTile(BaseService.State.Stopped, "")
     }
 
     override fun stateChanged(state: BaseService.State, profileName: String, msg: String?) {
@@ -81,5 +88,7 @@ class MeowTileService : BaseTileService(), MihomoConnection.Callback {
         } else {
             startService(intent)
         }
+        updateTile(BaseService.State.Connecting, "")
+        connection.connect(this, this)
     }
 }

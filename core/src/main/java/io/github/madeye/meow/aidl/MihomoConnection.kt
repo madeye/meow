@@ -21,6 +21,7 @@ class MihomoConnection(private var listenForBandwidth: Boolean = false) : Servic
     private var callback: Callback? = null
     private var service: IMihomoService? = null
     private var callbackRegistered = false
+    private var bound = false
 
     val serviceState: BaseService.State
         get() = try {
@@ -29,16 +30,25 @@ class MihomoConnection(private var listenForBandwidth: Boolean = false) : Servic
             BaseService.State.Idle
         }
 
-    fun connect(context: Context, callback: Callback) {
+    fun connect(context: Context, callback: Callback, autoCreate: Boolean = true): Boolean {
         this.callback = callback
+        if (bound) return true
         val intent = Intent(context, io.github.madeye.meow.bg.VpnService::class.java)
             .setAction(io.github.madeye.meow.utils.Action.SERVICE)
-        context.bindService(intent, this, Context.BIND_AUTO_CREATE)
+        bound = context.bindService(
+            intent,
+            this,
+            if (autoCreate) Context.BIND_AUTO_CREATE else 0,
+        )
+        return bound
     }
 
     fun disconnect(context: Context) {
-        unregisterCallback()
-        context.unbindService(this)
+        if (bound) {
+            unregisterCallback()
+            context.unbindService(this)
+            bound = false
+        }
         callback = null
         service = null
     }
