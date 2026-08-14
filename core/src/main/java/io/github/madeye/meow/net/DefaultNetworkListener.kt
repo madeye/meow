@@ -41,6 +41,7 @@ object DefaultNetworkListener {
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
             .build()
         cm.registerNetworkCallback(request, cb)
     }

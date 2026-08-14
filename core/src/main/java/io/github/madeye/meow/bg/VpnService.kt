@@ -66,7 +66,9 @@ class VpnService : BaseVpnService(), BaseService.Interface {
                 // empty array when all underlying connectivity is lost so the
                 // platform clears the VPN's transport association instead of
                 // keeping a stale network reference.
-                setUnderlyingNetworks(if (network != null) arrayOf(network) else arrayOf())
+                if (active) {
+                    setUnderlyingNetworks(if (network != null) arrayOf(network) else arrayOf())
+                }
                 Timber.d("VpnService: underlying network changed -> ${network}")
             }
         }
@@ -123,7 +125,6 @@ class VpnService : BaseVpnService(), BaseService.Interface {
             }
         }
 
-        active = true
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(metered)
 
         // Capture the underlying network BEFORE establish() — after the VPN
@@ -141,6 +142,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
         val conn = builder.establish() ?: throw NullConnectionException()
         this.conn = conn
+        active = true
         // Tell the system which network the VPN sits on top of. Without
         // this, VpnService.protect(fd) knows the bypass mark to apply but
         // the platform's per-network firewall has no associated network for
@@ -148,8 +150,9 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         // HyperOS builds.  We pass a single best network (prefer WiFi) so the
         // VPN transport label stays clean and Settings shows the
         // correct underlying connection.
-        underlying?.let { setUnderlyingNetworks(arrayOf(it)) }
-        Timber.d("VpnService: setUnderlyingNetworks=$underlying")
+        val currentUnderlying = underlyingNetwork ?: underlying
+        currentUnderlying?.let { setUnderlyingNetworks(arrayOf(it)) }
+        Timber.d("VpnService: setUnderlyingNetworks=$currentUnderlying")
         data.mihomoInstance!!.startTun2Socks(this, conn.fd)
     }
 
