@@ -390,9 +390,9 @@ class _SubscriptionDialogState extends State<_SubscriptionDialog> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final isEdit = widget.name != null;
-    final meow = Theme.of(context).extension<MeowColors>()!;
+    final meow = Theme.of(context).extension<MeowColors>();
     return AlertDialog(
-      backgroundColor: meow.card,
+      backgroundColor: meow?.card,
       scrollable: true,
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       title: Text(isEdit ? s.editSubscription : s.addSubscription),
