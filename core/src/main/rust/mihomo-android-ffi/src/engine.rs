@@ -16,10 +16,12 @@
 //! handling, and rule-engine fake-IP reversal are consistent across both
 //! platforms.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use meow_config::{load_config, Config};
 use meow_tunnel::Tunnel;
 use std::path::{Path, PathBuf};
+
+const BLOCK_QUIC_RULE: &str = "AND,((NETWORK,udp),(DST-PORT,443)),REJECT";
 
 /// Returns a clone of the running engine's `Tunnel` handle, or `None` if the
 /// engine isn't running. Mirrors meow-ios `engine::tunnel()`.
@@ -41,15 +43,10 @@ pub fn tunnel() -> Option<Tunnel> {
 /// hosts like xiaohongshu.com. Each endpoint uses an IP dial target with an
 /// explicit TLS name, avoiding both blocked TCP/53 and a bootstrap lookup.
 ///
-/// `listen: 127.0.0.1:1053` binds mihomo's `DnsServer` on a loopback UDP
-/// socket. tun2socks no longer parses DNS payloads or calls
-/// `DnsServer::handle_query` directly — every in-TUN UDP/53 datagram is
-/// rewritten to `127.0.0.1:1053` and dispatched through
-/// `meow_tunnel::udp::handle_udp` so DNS rides the same in-process tunnel
-/// path application traffic does. mihomo's tunnel routes the packet to its
-/// own bound DnsServer (via the DIRECT proxy + the NAT/reply machinery in
-/// meow-tunnel), so fake-IP synthesis, upstream resolution, hosts,
-/// NXDOMAIN — all DNS logic — stays inside mihomo, not in the FFI.
+/// `listen: ""` disables a loopback DNS socket. tun2socks intercepts each
+/// in-TUN UDP/53 datagram and calls `DnsServer::handle_query` with this
+/// resolver, so fake-IP synthesis, generic records, hosts, and response-code
+/// handling still stay inside meow-dns.
 pub fn pinned_dns_block() -> serde_yaml::Value {
     let yaml = r#"
 enable: true
@@ -64,11 +61,11 @@ nameserver:
 }
 
 /// Strip the shorthand listener ports + explicit `listeners:` array + user
-/// `dns:` block + `sniffer:` block from a raw config YAML, then inject the
-/// pinned DNS block. Operates on a generic `serde_yaml::Value` so unmodelled
-/// top-level keys (`tun:`, `experimental:`, `profile:`, etc.) round-trip
-/// unchanged.
-pub fn strip_and_inject(yaml: &str) -> Result<String> {
+/// `dns:` block + `sniffer:` block from a raw config YAML, optionally prepend
+/// the app-managed QUIC rejection rule, then inject the pinned DNS block.
+/// Operates on a generic `serde_yaml::Value` so unmodelled top-level keys
+/// (`tun:`, `experimental:`, `profile:`, etc.) round-trip unchanged.
+pub fn strip_and_inject(yaml: &str, block_quic: bool) -> Result<String> {
     let mut doc: serde_yaml::Value = serde_yaml::from_str(yaml).context("parsing config YAML")?;
     if let serde_yaml::Value::Mapping(m) = &mut doc {
         for key in [
@@ -81,6 +78,20 @@ pub fn strip_and_inject(yaml: &str) -> Result<String> {
             "dns",
         ] {
             m.remove(serde_yaml::Value::String(key.to_string()));
+        }
+        if block_quic {
+            let rules_key = serde_yaml::Value::String("rules".into());
+            let rule = serde_yaml::Value::String(BLOCK_QUIC_RULE.into());
+            match m.get_mut(&rules_key) {
+                Some(serde_yaml::Value::Sequence(rules)) => rules.insert(0, rule),
+                Some(slot @ serde_yaml::Value::Null) => {
+                    *slot = serde_yaml::Value::Sequence(vec![rule]);
+                }
+                Some(_) => bail!("config rules must be a sequence"),
+                None => {
+                    m.insert(rules_key, serde_yaml::Value::Sequence(vec![rule]));
+                }
+            }
         }
         m.insert(serde_yaml::Value::String("dns".into()), pinned_dns_block());
     }
@@ -105,10 +116,10 @@ impl Drop for TempFileGuard {
 /// rule-/proxy-provider `cache_dir`, so colocating with the original
 /// keeps rule-provider cache files in the home dir. Using
 /// `load_config_from_str` would silently disable that caching.
-pub async fn load_stripped_config(config_path: &str) -> Result<Config> {
+pub async fn load_stripped_config(config_path: &str, block_quic: bool) -> Result<Config> {
     let original = std::fs::read_to_string(config_path)
         .with_context(|| format!("reading config from {config_path}"))?;
-    let stripped = strip_and_inject(&original)?;
+    let stripped = strip_and_inject(&original, block_quic)?;
     let stripped_path = sibling_stripped_path(config_path);
     std::fs::write(&stripped_path, stripped)
         .with_context(|| format!("writing stripped config to {}", stripped_path.display()))?;
@@ -119,4 +130,37 @@ pub async fn load_stripped_config(config_path: &str) -> Result<Config> {
 
 fn sibling_stripped_path(config_path: &str) -> PathBuf {
     Path::new(config_path).with_extension("android-stripped.yaml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule_strings(yaml: &str, block_quic: bool) -> Vec<String> {
+        let stripped = strip_and_inject(yaml, block_quic).unwrap();
+        let doc: serde_yaml::Value = serde_yaml::from_str(&stripped).unwrap();
+        doc["rules"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|rule| rule.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn block_quic_supports_flow_style_and_missing_rules() {
+        assert_eq!(
+            rule_strings("rules: ['MATCH,DIRECT']", true),
+            [BLOCK_QUIC_RULE, "MATCH,DIRECT"]
+        );
+        assert_eq!(rule_strings("mode: rule", true), [BLOCK_QUIC_RULE]);
+    }
+
+    #[test]
+    fn block_quic_disabled_preserves_rules() {
+        assert_eq!(
+            rule_strings("rules: ['MATCH,DIRECT']", false),
+            ["MATCH,DIRECT"]
+        );
+    }
 }

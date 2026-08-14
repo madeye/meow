@@ -9,8 +9,7 @@
 //! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
 //! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
 //! `engine::strip_and_inject`; the tun2socks UDP/53 intercept hands every
-//! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`
-//! (A/AAAA) or forwards verbatim to the pinned upstreams (anything else).
+//! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`.
 //! Mirrors meow-ios.
 
 mod diagnostics;
@@ -185,7 +184,11 @@ fn drain_log_buffer() -> Vec<String> {
 // Engine lifecycle
 // ---------------------------------------------------------------------------
 
-fn start_engine(external_controller: Option<String>, secret: Option<String>) -> i32 {
+fn start_engine(
+    external_controller: Option<String>,
+    secret: Option<String>,
+    block_quic: bool,
+) -> i32 {
     logging::bridge_log("start_engine: acquiring ENGINE lock");
     let mut engine = ENGINE.lock();
     if engine.is_some() {
@@ -194,7 +197,7 @@ fn start_engine(external_controller: Option<String>, secret: Option<String>) -> 
     }
 
     let rt = get_runtime();
-    match rt.block_on(async { start_engine_async(external_controller, secret).await }) {
+    match rt.block_on(async { start_engine_async(external_controller, secret, block_quic).await }) {
         Ok(state) => {
             logging::bridge_log("start_engine: engine started successfully");
             *engine = Some(state);
@@ -211,6 +214,7 @@ fn start_engine(external_controller: Option<String>, secret: Option<String>) -> 
 async fn start_engine_async(
     external_controller: Option<String>,
     secret: Option<String>,
+    block_quic: bool,
 ) -> Result<EngineState, anyhow::Error> {
     logging::bridge_log("start_engine_async: initializing rustls");
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -246,11 +250,11 @@ async fn start_engine_async(
     let mut config = match config_path.as_deref() {
         Some(path) if std::path::Path::new(path).exists() => {
             logging::bridge_log(&format!("start_engine_async: loading config from {}", path));
-            engine::load_stripped_config(path).await?
+            engine::load_stripped_config(path, block_quic).await?
         }
         _ => {
             logging::bridge_log("start_engine_async: using minimal config");
-            let stripped = engine::strip_and_inject(MINIMAL_CONFIG)?;
+            let stripped = engine::strip_and_inject(MINIMAL_CONFIG, block_quic)?;
             meow_config::load_config_from_str(&stripped).await?
         }
     };
@@ -397,13 +401,14 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartEng
     _class: JClass,
     addr: JString,
     secret: JString,
+    block_quic: jboolean,
 ) -> jint {
     let addr_str: String = env.get_string(&addr).map(|s| s.into()).unwrap_or_default();
     let secret_str: String = env
         .get_string(&secret)
         .map(|s| s.into())
         .unwrap_or_default();
-    start_engine(Some(addr_str), Some(secret_str))
+    start_engine(Some(addr_str), Some(secret_str), block_quic != JNI_FALSE)
 }
 
 #[no_mangle]

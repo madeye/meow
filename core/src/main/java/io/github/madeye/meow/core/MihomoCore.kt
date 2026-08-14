@@ -8,7 +8,7 @@ object MihomoCore {
 
     external fun nativeInit()
     external fun nativeSetHomeDir(dir: String)
-    external fun nativeStartEngine(addr: String, secret: String): Int
+    external fun nativeStartEngine(addr: String, secret: String, blockQuic: Boolean): Int
     external fun nativeStopEngine()
     external fun nativeStartTun2Socks(vpnService: Any, fd: Int, dnsPort: Int): Int
     external fun nativeIsRunning(): Boolean

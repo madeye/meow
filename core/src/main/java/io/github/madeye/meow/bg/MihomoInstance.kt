@@ -89,15 +89,9 @@ class MihomoInstance(val profile: ClashProfile) {
             "$ipv6\n$yaml"
         }
 
-        if (blockQuic) {
-            // Block QUIC (UDP/443) to force apps back to TCP, which is
-            // reliably proxied. The AND rule ensures only UDP is matched.
-            yaml = yaml.replace(Regex("(?m)^rules:\r?\n"), "rules:\n  - AND,((NETWORK,udp),(DST-PORT,443)),REJECT\n")
-        }
-
         configFile.writeText(yaml)
         MihomoCore.nativeSetHomeDir(configDir.absolutePath)
-        val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "")
+        val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "", blockQuic)
         if (result != 0) {
             throw RuntimeException("Failed to start engine: ${MihomoCore.nativeGetLastError()}")
         }
