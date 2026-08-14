@@ -9,8 +9,7 @@
 //! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
 //! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
 //! `engine::strip_and_inject`; the tun2socks UDP/53 intercept hands every
-//! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`
-//! (A/AAAA) or forwards verbatim to the pinned upstreams (anything else).
+//! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`.
 //! Mirrors meow-ios.
 
 mod diagnostics;

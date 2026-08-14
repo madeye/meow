@@ -3,10 +3,9 @@
 //! dispatches every accepted flow in-process via
 //! `meow_tunnel::tcp::handle_tcp` — same pattern as meow-ios.
 //!
-//! DNS is handled in-process: UDP/53 packets are intercepted pre-stack,
-//! A/AAAA queries go to `DnsServer::handle_query` for fake-IP synthesis,
-//! and all other qtypes are forwarded verbatim to the pinned upstream pool.
-//! No loopback DNS server socket exists.
+//! DNS is handled in-process: UDP/53 packets are intercepted pre-stack and
+//! handed to `DnsServer::handle_query`, which uses the configured resolver
+//! for both address and generic record types. No loopback DNS socket exists.
 
 use crate::engine;
 use crate::logging;
@@ -25,7 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::{mpsc, Semaphore};
 use tokio::task::JoinHandle;
 use tracing::{trace, warn};
@@ -40,9 +39,6 @@ static TUN2SOCKS_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 const DNS_BURST_CAP: usize = 256;
 const DNS_TASK_TIMEOUT: Duration = Duration::from_secs(5);
 static DNS_CAP_LOG_LAST_MS: AtomicU64 = AtomicU64::new(0);
-
-const DNS_PASSTHROUGH_UPSTREAMS: &[&str] = &["119.29.29.29:53", "223.5.5.5:53"];
-const DNS_PASSTHROUGH_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn warn_capped(slot: &AtomicU64, msg: &str) {
     let now_ms = SystemTime::now()
@@ -149,7 +145,8 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                     match accepted {
                         Some((stream, local_addr, remote_addr)) => {
                             if remote_addr.port() == 53 {
-                                drop(stream);
+                                let handle = tokio::spawn(dispatch_tcp_dns(stream));
+                                track_flow_task(&flow_tasks_lwip, handle);
                                 continue;
                             }
                             let handle = tokio::spawn(async move {
@@ -249,39 +246,19 @@ async fn run_tun2socks(fd: RawFd) -> io::Result<()> {
                             let Some(parsed) = parse_udp_packet(&request) else {
                                 return;
                             };
-                            let qtype = parse_dns_qtype(parsed.payload);
-
-                            let response_payload = if matches!(qtype, Some(1) | Some(28)) {
-                                let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone())
-                                else {
-                                    trace!("tun2socks: DNS dropped — resolver not ready");
-                                    return;
-                                };
+                            let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone())
+                            else {
+                                trace!("tun2socks: DNS dropped — resolver not ready");
+                                return;
+                            };
+                            let response_payload =
                                 match DnsServer::handle_query(parsed.payload, &resolver).await {
                                     Ok(bytes) => bytes,
                                     Err(e) => {
                                         trace!("tun2socks: DnsServer::handle_query error: {}", e);
                                         return;
                                     }
-                                }
-                            } else {
-                                match forward_dns_to_upstream(
-                                    parsed.payload,
-                                    DNS_PASSTHROUGH_UPSTREAMS,
-                                    DNS_PASSTHROUGH_TIMEOUT,
-                                )
-                                .await
-                                {
-                                    Some(bytes) => bytes,
-                                    None => {
-                                        trace!(
-                                            "tun2socks: DNS passthrough timed out (qtype={:?})",
-                                            qtype
-                                        );
-                                        return;
-                                    }
-                                }
-                            };
+                                };
                             let Some(reply_pkt) = build_udp_reply(&request, &response_payload)
                             else {
                                 return;
@@ -347,6 +324,43 @@ async fn abort_flow_tasks(flow_tasks: &FlowTasks) {
 // ---------------------------------------------------------------------------
 // TCP dispatch
 // ---------------------------------------------------------------------------
+
+async fn dispatch_tcp_dns(mut stream: lwip::TcpStream) {
+    loop {
+        let mut length = [0u8; 2];
+        if stream.read_exact(&mut length).await.is_err() {
+            return;
+        }
+        let query_len = u16::from_be_bytes(length) as usize;
+        if query_len == 0 {
+            return;
+        }
+        let mut query = vec![0u8; query_len];
+        if stream.read_exact(&mut query).await.is_err() {
+            return;
+        }
+        let Some(resolver) = engine::tunnel().map(|t| t.resolver().clone()) else {
+            trace!("tun2socks: TCP DNS dropped — resolver not ready");
+            return;
+        };
+        let Ok(Ok(response)) =
+            tokio::time::timeout(DNS_TASK_TIMEOUT, DnsServer::handle_query(&query, &resolver))
+                .await
+        else {
+            trace!("tun2socks: TCP DNS query failed or timed out");
+            return;
+        };
+        let Ok(response_len) = u16::try_from(response.len()) else {
+            return;
+        };
+        if stream.write_all(&response_len.to_be_bytes()).await.is_err()
+            || stream.write_all(&response).await.is_err()
+            || stream.flush().await.is_err()
+        {
+            return;
+        }
+    }
+}
 
 async fn dispatch_tcp(stream: lwip::TcpStream, src_addr: SocketAddr, dst_addr: SocketAddr) {
     let tunnel = match engine::tunnel() {
@@ -477,91 +491,6 @@ fn spawn_udp_reply_reader(
         tunnel_inner.nat_table.remove(&key);
         reply_readers.lock().remove(&key);
     });
-}
-
-// ---------------------------------------------------------------------------
-// DNS passthrough for non-A/AAAA qtypes
-// ---------------------------------------------------------------------------
-
-async fn forward_dns_to_upstream(
-    query: &[u8],
-    upstreams: &[&str],
-    timeout: Duration,
-) -> Option<Vec<u8>> {
-    if upstreams.is_empty() || query.len() < 2 {
-        return None;
-    }
-    let query_id = u16::from_be_bytes([query[0], query[1]]);
-    let query_owned = query.to_vec();
-
-    type DnsForwardFut = Pin<Box<dyn std::future::Future<Output = Option<Vec<u8>>> + Send>>;
-    let mut futs: Vec<DnsForwardFut> = Vec::with_capacity(upstreams.len());
-    for upstream in upstreams {
-        let Ok(addr) = upstream.parse::<SocketAddr>() else {
-            continue;
-        };
-        let q = query_owned.clone();
-        futs.push(Box::pin(async move {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-            let stream = meow_common::connect_tcp(addr).await.ok()?;
-            let mut stream = tokio::io::BufStream::new(stream);
-            let len = u16::try_from(q.len()).ok()?;
-            stream.write_all(&len.to_be_bytes()).await.ok()?;
-            stream.write_all(&q).await.ok()?;
-            stream.flush().await.ok()?;
-            let mut len_buf = [0u8; 2];
-            tokio::time::timeout(timeout, stream.read_exact(&mut len_buf))
-                .await
-                .ok()?
-                .ok()?;
-            let resp_len = u16::from_be_bytes(len_buf) as usize;
-            let mut buf = vec![0u8; resp_len];
-            stream.read_exact(&mut buf).await.ok()?;
-            if buf.len() >= 2 && u16::from_be_bytes([buf[0], buf[1]]) == query_id {
-                Some(buf)
-            } else {
-                None
-            }
-        }));
-    }
-    while !futs.is_empty() {
-        let (result, _idx, remaining) = futures::future::select_all(futs).await;
-        if result.is_some() {
-            return result;
-        }
-        futs = remaining;
-    }
-    None
-}
-
-// ---------------------------------------------------------------------------
-// DNS helpers
-// ---------------------------------------------------------------------------
-
-fn parse_dns_qtype(payload: &[u8]) -> Option<u16> {
-    if payload.len() < 12 {
-        return None;
-    }
-    let qdcount = u16::from_be_bytes([payload[4], payload[5]]);
-    if qdcount == 0 {
-        return None;
-    }
-    let mut pos = 12usize;
-    loop {
-        let len = *payload.get(pos)? as usize;
-        if len == 0 {
-            pos = pos.checked_add(1)?;
-            break;
-        }
-        if len & 0xC0 == 0xC0 {
-            pos = pos.checked_add(2)?;
-            break;
-        }
-        pos = pos.checked_add(1 + len)?;
-    }
-    let hi = *payload.get(pos)?;
-    let lo = *payload.get(pos.checked_add(1)?)?;
-    Some(u16::from_be_bytes([hi, lo]))
 }
 
 // ---------------------------------------------------------------------------

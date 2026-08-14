@@ -41,15 +41,10 @@ pub fn tunnel() -> Option<Tunnel> {
 /// hosts like xiaohongshu.com. Each endpoint uses an IP dial target with an
 /// explicit TLS name, avoiding both blocked TCP/53 and a bootstrap lookup.
 ///
-/// `listen: 127.0.0.1:1053` binds mihomo's `DnsServer` on a loopback UDP
-/// socket. tun2socks no longer parses DNS payloads or calls
-/// `DnsServer::handle_query` directly — every in-TUN UDP/53 datagram is
-/// rewritten to `127.0.0.1:1053` and dispatched through
-/// `meow_tunnel::udp::handle_udp` so DNS rides the same in-process tunnel
-/// path application traffic does. mihomo's tunnel routes the packet to its
-/// own bound DnsServer (via the DIRECT proxy + the NAT/reply machinery in
-/// meow-tunnel), so fake-IP synthesis, upstream resolution, hosts,
-/// NXDOMAIN — all DNS logic — stays inside mihomo, not in the FFI.
+/// `listen: ""` disables a loopback DNS socket. tun2socks intercepts each
+/// in-TUN UDP/53 datagram and calls `DnsServer::handle_query` with this
+/// resolver, so fake-IP synthesis, generic records, hosts, and response-code
+/// handling still stay inside meow-dns.
 pub fn pinned_dns_block() -> serde_yaml::Value {
     let yaml = r#"
 enable: true
