@@ -19,12 +19,12 @@ missing_const_for_thread_local = "allow"
 
 [dependencies]
 meow-tunnel = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-tunnel" }
-meow-config = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-config", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision", "mux"] }
+meow-config = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-config", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision", "ss", "vmess", "mux"] }
 meow-dns = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-dns" }
 meow-api = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-api" }
 meow-common = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-common" }
 meow-transport = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-transport", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality"] }
-meow-proxy = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-proxy", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision", "mux"] }
+meow-proxy = { path = "C:/Users/laevatain/Code/meow-rs/crates/meow-proxy", features = ["anytls", "ech-tls-tunnel", "vless", "vless-vision", "ss", "vmess", "mux"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
