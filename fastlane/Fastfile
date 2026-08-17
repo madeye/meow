@@ -39,10 +39,19 @@ platform :android do
   end
 
   desc "Promote internal to production"
-  lane :production do
+  lane :production do |options|
+    # version_code is required for the promote flow: without it supply tries
+    # to upload changelogs for an unknown version and aborts with
+    # "Cannot find changelog because no version code given". Metadata was
+    # already uploaded by the `internal` lane, so skip it here.
     upload_to_play_store(
       track: "internal",
-      track_promote_to: "production"
+      track_promote_to: "production",
+      version_code: options[:version_code],
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
     )
   end
 
