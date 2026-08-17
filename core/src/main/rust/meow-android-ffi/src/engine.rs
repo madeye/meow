@@ -78,6 +78,13 @@ pub fn strip_and_inject(yaml: &str) -> Result<String> {
             "listeners",
             "sniffer",
             "dns",
+            // The app pins the API server to 127.0.0.1:9090 via
+            // nativeStartEngine, so the user's value is never used — and
+            // mihomo-style shorthand like `external-controller: :9090`
+            // fails meow-config's strict address parse since v0.20.
+            "external-controller",
+            "external-controller-tls",
+            "secret",
         ] {
             m.remove(serde_yaml::Value::String(key.to_string()));
         }
