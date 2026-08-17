@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../l10n/strings.dart';
 import '../models/connection.dart';
-import '../services/mihomo_api.dart';
+import '../services/meow_api.dart';
 
 class ConnectionsScreen extends StatefulWidget {
   final Future<ConnectionsSnapshot> Function()? getConnectionsOverride;
@@ -62,7 +62,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
   Future<void> _poll() async {
     try {
       final getConns =
-          widget.getConnectionsOverride ?? MihomoApi.instance.getConnections;
+          widget.getConnectionsOverride ?? MeowApi.instance.getConnections;
       final snapshot = await getConns();
       if (mounted) {
         setState(() {
@@ -79,7 +79,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
   Future<void> _closeConnection(String id) async {
     try {
       final close =
-          widget.closeConnectionOverride ?? MihomoApi.instance.closeConnection;
+          widget.closeConnectionOverride ?? MeowApi.instance.closeConnection;
       await close(id);
       setState(() {
         _dismissedIds.add(id);
@@ -110,7 +110,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen>
     try {
       final closeAll =
           widget.closeAllConnectionsOverride ??
-          MihomoApi.instance.closeAllConnections;
+          MeowApi.instance.closeAllConnections;
       await closeAll();
       if (mounted) setState(() => _connections = []);
     } catch (_) {}

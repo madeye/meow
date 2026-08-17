@@ -9,8 +9,8 @@ import android.os.RemoteException
 import io.github.madeye.meow.bg.BaseService
 import timber.log.Timber
 
-class MihomoConnection(private var listenForBandwidth: Boolean = false) : ServiceConnection,
-    IMihomoServiceCallback.Stub() {
+class MeowConnection(private var listenForBandwidth: Boolean = false) : ServiceConnection,
+    IMeowServiceCallback.Stub() {
 
     interface Callback {
         fun stateChanged(state: BaseService.State, profileName: String, msg: String?)
@@ -19,7 +19,7 @@ class MihomoConnection(private var listenForBandwidth: Boolean = false) : Servic
     }
 
     private var callback: Callback? = null
-    private var service: IMihomoService? = null
+    private var service: IMeowService? = null
     private var callbackRegistered = false
 
     val serviceState: BaseService.State
@@ -44,7 +44,7 @@ class MihomoConnection(private var listenForBandwidth: Boolean = false) : Servic
     }
 
     override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-        val service = IMihomoService.Stub.asInterface(binder) ?: return
+        val service = IMeowService.Stub.asInterface(binder) ?: return
         this.service = service
         try {
             service.registerCallback(this)

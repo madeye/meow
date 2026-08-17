@@ -1,8 +1,8 @@
 package io.github.madeye.meow.core
 
-object MihomoCore {
+object MeowCore {
     init {
-        System.loadLibrary("mihomo_android_ffi")
+        System.loadLibrary("meow_android_ffi")
         nativeInit()
     }
 

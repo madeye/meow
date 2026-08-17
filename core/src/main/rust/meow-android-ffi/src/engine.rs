@@ -27,28 +27,28 @@ pub fn tunnel() -> Option<Tunnel> {
     crate::ENGINE.lock().as_ref().map(|s| s.tunnel.clone())
 }
 
-/// Pinned DNS block injected into every engine config. Configures mihomo's
+/// Pinned DNS block injected into every engine config. Configures meow's
 /// resolver in fake-IP mode with the FFI's chosen CIDR; the tun2socks
 /// UDP/53 intercept then hands every in-TUN datagram straight to
 /// `meow_dns::DnsServer::handle_query`, so this block is the single source
 /// of truth for synthesis, reverse mapping, AAAA / hosts / NXDOMAIN, and
 /// upstream nameserver selection.
 ///
-/// Nameserver pool is restricted to CN-side resolvers because mihomo's
+/// Nameserver pool is restricted to CN-side resolvers because meow's
 /// `query_pool` races every entry in parallel ("first response wins"), and
 /// mixing a global anycast resolver into the same pool lets it win the race
 /// from outside CN — returning the global / SG / HK PoP for split-horizon
 /// hosts like xiaohongshu.com.
 ///
-/// `listen: 127.0.0.1:1053` binds mihomo's `DnsServer` on a loopback UDP
+/// `listen: 127.0.0.1:1053` binds meow's `DnsServer` on a loopback UDP
 /// socket. tun2socks no longer parses DNS payloads or calls
 /// `DnsServer::handle_query` directly — every in-TUN UDP/53 datagram is
 /// rewritten to `127.0.0.1:1053` and dispatched through
 /// `meow_tunnel::udp::handle_udp` so DNS rides the same in-process tunnel
-/// path application traffic does. mihomo's tunnel routes the packet to its
+/// path application traffic does. meow's tunnel routes the packet to its
 /// own bound DnsServer (via the DIRECT proxy + the NAT/reply machinery in
 /// meow-tunnel), so fake-IP synthesis, upstream resolution, hosts,
-/// NXDOMAIN — all DNS logic — stays inside mihomo, not in the FFI.
+/// NXDOMAIN — all DNS logic — stays inside meow, not in the FFI.
 pub fn pinned_dns_block() -> serde_yaml::Value {
     let yaml = r#"
 enable: true
@@ -78,6 +78,13 @@ pub fn strip_and_inject(yaml: &str) -> Result<String> {
             "listeners",
             "sniffer",
             "dns",
+            // The app pins the API server to 127.0.0.1:9090 via
+            // nativeStartEngine, so the user's value is never used — and
+            // mihomo-style shorthand like `external-controller: :9090`
+            // fails meow-config's strict address parse since v0.20.
+            "external-controller",
+            "external-controller-tls",
+            "secret",
         ] {
             m.remove(serde_yaml::Value::String(key.to_string()));
         }

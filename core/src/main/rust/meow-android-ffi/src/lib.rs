@@ -6,7 +6,7 @@
 //! through upstream's `meow_common::SocketProtector` hook — see
 //! `protect.rs` — so no proxy-side patches are needed. Every netstack TCP flow is dispatched
 //! in-process via `meow_tunnel::tcp::handle_tcp` — no SOCKS5 loopback
-//! hop. DNS is delegated to mihomo's resolver running in fake-IP mode
+//! hop. DNS is delegated to meow's resolver running in fake-IP mode
 //! (28.0.0.0/8) with a pinned CN-side upstream pool injected by
 //! `engine::strip_and_inject`; the tun2socks UDP/53 intercept hands every
 //! in-TUN DNS datagram straight to `meow_dns::DnsServer::handle_query`
@@ -38,7 +38,7 @@ use tracing_subscriber::prelude::*;
 //
 // mimalloc instead of the platform malloc (scudo on Android API 30+).
 // Empirically returns freed pages to the OS more aggressively under the
-// allocation patterns mihomo + tun2socks generate (many short-lived
+// allocation patterns meow + tun2socks generate (many short-lived
 // per-flow allocations + the geoip mmdb scan), keeping VPN-service RSS
 // closer to working set.
 // ---------------------------------------------------------------------------
@@ -234,7 +234,7 @@ async fn start_engine_async(
     };
 
     // Geodata DBs are bundled in the APK and seeded into the engine home
-    // dir by MihomoInstance.copyGeoxAssets() before nativeStartEngine
+    // dir by MeowInstance.copyGeoxAssets() before nativeStartEngine
     // fires. The on-disk files at `$XDG_CONFIG_HOME/meow/Country.mmdb` and
     // `…/GeoLite2-ASN.mmdb` are guaranteed to exist by the time we reach
     // load_config, so no pre-VPN network fetch is needed here. See
@@ -348,7 +348,7 @@ async fn start_engine_async(
 // ---------------------------------------------------------------------------
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeInit(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeInit(
     _env: JNIEnv,
     _class: JClass,
 ) {
@@ -357,7 +357,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeInit(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetHomeDir(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeSetHomeDir(
     mut env: JNIEnv,
     _class: JClass,
     dir: JString,
@@ -384,7 +384,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeSetHomeD
 /// string (empty if none pending). Kotlin splits it back into a list for the
 /// logs screen. Safe to call whether or not the engine is running.
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLogs(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeGetLogs(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -395,7 +395,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLogs(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartEngine(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeStartEngine(
     mut env: JNIEnv,
     _class: JClass,
     addr: JString,
@@ -410,7 +410,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartEng
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStopEngine(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeStopEngine(
     _env: JNIEnv,
     _class: JClass,
 ) {
@@ -425,7 +425,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStopEngi
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun2Socks(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeStartTun2Socks(
     env: JNIEnv,
     _class: JClass,
     vpn_service: JObject,
@@ -461,7 +461,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeStartTun
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeIsRunning(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeIsRunning(
     _env: JNIEnv,
     _class: JClass,
 ) -> jboolean {
@@ -473,7 +473,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeIsRunnin
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetUploadTraffic(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeGetUploadTraffic(
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
@@ -485,7 +485,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetUploa
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetDownloadTraffic(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeGetDownloadTraffic(
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
@@ -497,7 +497,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetDownl
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeValidateConfig(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeValidateConfig(
     mut env: JNIEnv,
     _class: JClass,
     yaml: JString,
@@ -513,7 +513,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeValidate
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLastError(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeGetLastError(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -524,7 +524,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeGetLastE
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeVersion(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeVersion(
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {

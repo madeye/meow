@@ -1,4 +1,4 @@
-- Upgrade proxy engine to mihomo-rust 0.3.0
+- Upgrade proxy engine to meow-rust 0.3.0
 - Native simple-obfs and v2ray-plugin (WebSocket) for Shadowsocks
 - Fix: proxy selection now skips DIRECT/REJECT groups transitively
 - YAML editor for subscription configs (Sora Editor)

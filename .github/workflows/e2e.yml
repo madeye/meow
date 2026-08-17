@@ -48,7 +48,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin/cargo-ndk
-            core/src/main/rust/mihomo-android-ffi/target
+            core/src/main/rust/meow-android-ffi/target
           key: cargo-${{ runner.os }}-x86_64-${{ hashFiles('core/src/main/rust/**/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-x86_64-
 

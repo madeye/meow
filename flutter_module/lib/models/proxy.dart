@@ -5,7 +5,7 @@ class ProxyHistory {
   const ProxyHistory({required this.time, required this.delay});
 
   factory ProxyHistory.fromJson(Map<String, dynamic> json) {
-    // Handle both string time (mihomo-go) and struct time (mihomo-rust)
+    // Handle both string time (meow-go) and struct time (meow-rust)
     String timeStr;
     final rawTime = json['time'];
     if (rawTime is String) {

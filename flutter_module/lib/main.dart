@@ -1,4 +1,4 @@
 import 'package:flutter/material.dart';
 import 'app.dart';
 
-void main() => runApp(const MihomoApp());
+void main() => runApp(const MeowApp());

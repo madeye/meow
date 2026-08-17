@@ -10,8 +10,8 @@ import android.os.RemoteCallbackList
 import android.os.RemoteException
 import androidx.core.content.ContextCompat
 import io.github.madeye.meow.Core
-import io.github.madeye.meow.aidl.IMihomoService
-import io.github.madeye.meow.aidl.IMihomoServiceCallback
+import io.github.madeye.meow.aidl.IMeowService
+import io.github.madeye.meow.aidl.IMeowServiceCallback
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.utils.Action
 import kotlinx.coroutines.*
@@ -30,7 +30,7 @@ object BaseService {
 
     class Data internal constructor(private val service: Interface) {
         var state = State.Stopped
-        var mihomoInstance: MihomoInstance? = null
+        var meowInstance: MeowInstance? = null
         var notification: ServiceNotification? = null
         var closeReceiverRegistered = false
         val binder = Binder(this)
@@ -53,18 +53,18 @@ object BaseService {
         }
     }
 
-    class Binder(private var data: Data? = null) : IMihomoService.Stub(), CoroutineScope, AutoCloseable {
-        private val callbacks = RemoteCallbackList<IMihomoServiceCallback>()
+    class Binder(private var data: Data? = null) : IMeowService.Stub(), CoroutineScope, AutoCloseable {
+        private val callbacks = RemoteCallbackList<IMeowServiceCallback>()
         private val bandwidthListeners = mutableMapOf<IBinder, Long>()
         override val coroutineContext = Dispatchers.Main.immediate + Job()
         private var looper: Job? = null
 
         override fun getState(): Int = (data?.state ?: State.Idle).ordinal
-        override fun getProfileName(): String = data?.mihomoInstance?.profileName ?: "Idle"
+        override fun getProfileName(): String = data?.meowInstance?.profileName ?: "Idle"
 
-        override fun registerCallback(cb: IMihomoServiceCallback) { callbacks.register(cb) }
+        override fun registerCallback(cb: IMeowServiceCallback) { callbacks.register(cb) }
 
-        private fun broadcast(work: (IMihomoServiceCallback) -> Unit) {
+        private fun broadcast(work: (IMeowServiceCallback) -> Unit) {
             val count = callbacks.beginBroadcast()
             try {
                 repeat(count) {
@@ -78,7 +78,7 @@ object BaseService {
         private suspend fun loop() {
             while (true) {
                 delay(bandwidthListeners.values.minOrNull() ?: return)
-                val instance = data?.mihomoInstance ?: continue
+                val instance = data?.meowInstance ?: continue
                 if (data?.state != State.Connected || bandwidthListeners.isEmpty()) continue
                 val stats = instance.requestTrafficUpdate()
                 broadcast { item ->
@@ -89,7 +89,7 @@ object BaseService {
             }
         }
 
-        override fun startListeningForBandwidth(cb: IMihomoServiceCallback, timeout: Long) {
+        override fun startListeningForBandwidth(cb: IMeowServiceCallback, timeout: Long) {
             launch {
                 if (bandwidthListeners.isEmpty() && bandwidthListeners.put(cb.asBinder(), timeout) == null) {
                     looper = launch { loop() }
@@ -97,7 +97,7 @@ object BaseService {
             }
         }
 
-        override fun stopListeningForBandwidth(cb: IMihomoServiceCallback) {
+        override fun stopListeningForBandwidth(cb: IMeowServiceCallback) {
             launch {
                 if (bandwidthListeners.remove(cb.asBinder()) != null && bandwidthListeners.isEmpty()) {
                     looper?.cancel()
@@ -106,7 +106,7 @@ object BaseService {
             }
         }
 
-        override fun unregisterCallback(cb: IMihomoServiceCallback) {
+        override fun unregisterCallback(cb: IMeowServiceCallback) {
             stopListeningForBandwidth(cb)
             callbacks.unregister(cb)
         }
@@ -150,8 +150,8 @@ object BaseService {
         }
 
         fun killProcesses(scope: CoroutineScope) {
-            data.mihomoInstance?.stop()
-            data.mihomoInstance = null
+            data.meowInstance?.stop()
+            data.meowInstance = null
         }
 
         fun stopRunner(restart: Boolean = false, msg: String? = null) {
@@ -189,7 +189,7 @@ object BaseService {
                 return Service.START_NOT_STICKY
             }
 
-            data.mihomoInstance = MihomoInstance(profile)
+            data.meowInstance = MeowInstance(profile)
 
             if (!data.closeReceiverRegistered) {
                 ContextCompat.registerReceiver(this, data.closeReceiver, IntentFilter().apply {

@@ -83,5 +83,5 @@ flutter:
   # identifiers, which may be completely independent or the same as these.
   module:
     androidX: true
-    androidPackage: com.madeye.mihomo.flutter_module
-    iosBundleIdentifier: com.madeye.mihomo.flutterModule
+    androidPackage: com.madeye.meow.flutter_module
+    iosBundleIdentifier: com.madeye.meow.flutterModule
