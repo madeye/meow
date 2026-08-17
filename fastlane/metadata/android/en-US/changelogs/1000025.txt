@@ -1,0 +1,4 @@
+- New protocols: VLESS (incl. Vision & post-quantum encryption, REALITY), VMess, Snell, Hysteria2 — the full meow-rs v0.20.2 engine
+- Fixed AnyTLS connections timing out while the VPN is active
+- Config import now accepts mihomo-style configs the engine already supports
+- Stability improvements
