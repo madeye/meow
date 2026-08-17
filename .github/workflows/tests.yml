@@ -19,6 +19,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned to the locally-verified toolchain: an unpinned `stable`
+          # channel let a Flutter update raise the minimum Gradle version
+          # and break every workflow at config time (fixed by #59).
+          flutter-version: 3.41.6
           cache: true
 
       - name: Flutter pub get
@@ -52,6 +56,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned to the locally-verified toolchain: an unpinned `stable`
+          # channel let a Flutter update raise the minimum Gradle version
+          # and break every workflow at config time (fixed by #59).
+          flutter-version: 3.41.6
           cache: true
 
       - name: Flutter pub get
