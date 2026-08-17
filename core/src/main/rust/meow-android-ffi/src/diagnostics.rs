@@ -11,7 +11,7 @@ fn result_to_jstring(env: &mut JNIEnv, s: &str) -> jstring {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeTestDirectTcp(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeTestDirectTcp(
     mut env: JNIEnv,
     _class: JClass,
     host: jni::objects::JString,
@@ -41,7 +41,7 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeTestDire
 }
 
 #[no_mangle]
-pub extern "system" fn Java_io_github_madeye_meow_core_MihomoCore_nativeTestDnsResolver(
+pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeTestDnsResolver(
     mut env: JNIEnv,
     _class: JClass,
     dns_addr: jni::objects::JString,

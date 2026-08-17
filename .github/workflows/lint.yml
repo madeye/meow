@@ -48,7 +48,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin/cargo-ndk
-            core/src/main/rust/mihomo-android-ffi/target
+            core/src/main/rust/meow-android-ffi/target
           key: cargo-lint-${{ runner.os }}-${{ hashFiles('core/src/main/rust/**/Cargo.lock') }}
           restore-keys: cargo-lint-${{ runner.os }}-
 
@@ -92,16 +92,16 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            core/src/main/rust/mihomo-android-ffi/target
+            core/src/main/rust/meow-android-ffi/target
           key: cargo-clippy-${{ runner.os }}-${{ hashFiles('core/src/main/rust/**/Cargo.lock') }}
           restore-keys: cargo-clippy-${{ runner.os }}-
 
       - name: Clippy
-        working-directory: core/src/main/rust/mihomo-android-ffi
+        working-directory: core/src/main/rust/meow-android-ffi
         run: cargo clippy -- -D warnings
 
       - name: Rustfmt
-        working-directory: core/src/main/rust/mihomo-android-ffi
+        working-directory: core/src/main/rust/meow-android-ffi
         run: cargo fmt --all --check
 
   flutter-lint:

@@ -19,7 +19,7 @@ val allAbis = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x8
 val targetAbi = findProperty("TARGET_ABI")?.toString()
 
 // GeoX databases bundled as APK assets. Seeded into the engine home dir
-// by MihomoInstance.copyGeoxAssets() on each start so the engine never
+// by MeowInstance.copyGeoxAssets() on each start so the engine never
 // needs to reach the network for these — meow-rs's pre-VPN auto-fetch is
 // flaky on censored / metered links (github.com:443 can take 15s+ to
 // TCP-connect from CN cellular, with no timeout in the library path).
@@ -98,8 +98,8 @@ extensions.getByType(LibraryAndroidComponentsExtension::class.java).onVariants {
 }
 
 cargo {
-    module = "src/main/rust/mihomo-android-ffi"
-    libname = "mihomo_android_ffi"
+    module = "src/main/rust/meow-android-ffi"
+    libname = "meow_android_ffi"
     targets = if (targetAbi != null) listOf(targetAbi) else listOf("arm", "arm64", "x86", "x86_64")
     profile = findProperty("CARGO_PROFILE")?.toString() ?: currentFlavor
     exec = { spec, toolchain ->
@@ -116,6 +116,54 @@ cargo {
                 }
             }
             spec.environment("RUST_ANDROID_GRADLE_CC_LINK_ARG", "-Wl,-z,max-page-size=16384")
+            // boring-sys (meow-transport `boring-tls`) drives its own cmake
+            // build of BoringSSL. Left to its own devices it passes
+            // -DCMAKE_C_COMPILER=$CC alongside the NDK toolchain file; the
+            // modern NDK toolchain overrides the compiler in the cache, so the
+            // second configure pass (crypto after ssl) sees a "changed"
+            // compiler, wipes the cache mid-run and falls back to Apple host
+            // flags (-arch/-isysroot) that android-clang rejects. Providing
+            // CMAKE_TOOLCHAIN_FILE_<target> makes both boring-sys and the
+            // `cmake` crate defer entirely to the toolchain file — but then
+            // nothing sets ANDROID_ABI, so point at generated per-target
+            // wrappers that set the ABI and include the real NDK toolchain.
+            spec.environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+            val ndkToolchainFile = android.ndkDirectory.resolve("build/cmake/android.toolchain.cmake")
+            val cmakeMinSdk = android.defaultConfig.minSdk ?: 21
+            mapOf(
+                "armv7-linux-androideabi" to "armeabi-v7a",
+                "aarch64-linux-android" to "arm64-v8a",
+                "i686-linux-android" to "x86",
+                "x86_64-linux-android" to "x86_64",
+            ).forEach { (triple, cmakeAbi) ->
+                val wrapper = layout.buildDirectory.file("cmakeToolchains/$triple.cmake").get().asFile
+                wrapper.parentFile.mkdirs()
+                wrapper.writeText(
+                    """
+                    set(ANDROID_ABI $cmakeAbi)
+                    set(ANDROID_PLATFORM android-$cmakeMinSdk)
+                    include("${ndkToolchainFile.absolutePath}")
+                    """.trimIndent() + "\n"
+                )
+                spec.environment("CMAKE_TOOLCHAIN_FILE_$triple", wrapper.absolutePath)
+            }
+            // boring-sys defaults to `cargo:rustc-link-lib=c++` on Android,
+            // which the NDK resolves to libc++_shared.so — a library the APK
+            // doesn't package, so MeowCore's System.loadLibrary dlopen-fails
+            // at runtime. Link the static libc++ instead (BoringSSL builds
+            // with -fno-exceptions/-fno-rtti, so libc++_static suffices).
+            // (Plain lib name, not `static=`: rustc verifies `static=` archives
+            // against the declaring crate's own -L paths and fails; a plain
+            // -lc++_static is resolved by the NDK clang driver, which only
+            // ships the static archive under that name.)
+            spec.environment("BORING_BSSL_RUST_CPPLIB", "c++_static")
+            // Homebrew CMake 4.x mis-configures the NDK toolchain (Apple host
+            // -arch/-isysroot flags leak into the android-clang try-compile).
+            // Prefer the SDK-bundled CMake 3.x; the `cmake` crate honors $CMAKE.
+            android.sdkDirectory.resolve("cmake").listFiles()
+                ?.filter { it.name.startsWith("3.") && it.resolve("bin/cmake").exists() }
+                ?.maxByOrNull { it.name }
+                ?.let { spec.environment("CMAKE", it.resolve("bin/cmake").absolutePath) }
         }
     }
 }

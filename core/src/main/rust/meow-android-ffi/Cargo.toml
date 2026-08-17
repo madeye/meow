@@ -1,5 +1,5 @@
 [package]
-name = "mihomo-android-ffi"
+name = "meow-android-ffi"
 version = "0.1.0"
 edition = "2021"
 
@@ -18,13 +18,23 @@ needless_return = "allow"
 missing_const_for_thread_local = "allow"
 
 [dependencies]
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.18.0", features = ["anytls", "ech-tls-tunnel"] }
+# Full upstream protocol set (mirrors meow-app's `full` bundle and meow-ios):
+# ss, trojan, vless (+vision, +post-quantum encryption, REALITY), vmess, snell,
+# hysteria2, anytls, ech-tls-tunnel. Features are spelled out explicitly rather
+# than relying on the crates' defaults so an upstream default change can't
+# silently drop a protocol from the app.
+#
+# `boring-tls` (BoringSSL-backed TLS in meow-transport) enables proxy-outbound
+# ECH (`ech-opts:`) and uTLS fingerprinting — without it those configs are
+# rejected at TlsLayer::new. Same trade-off as meow-ios: boring-sys vendors
+# BoringSSL (~few MB per ABI, needs cmake + NDK C++ at build time).
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel", "boring-tls"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality", "boring-tls"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new
@@ -46,7 +56,7 @@ android_logger = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 
-# rustls is still needed by `start_engine_async` for the embedded mihomo
+# rustls is still needed by `start_engine_async` for the embedded meow
 # engine's outbound TLS (Trojan, etc.) — installs the ring crypto provider.
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 

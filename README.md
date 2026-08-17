@@ -2,7 +2,7 @@
 
 ![Feature Graphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
-A Clash/mihomo Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and lwip-based tun2socks.
+A Clash/meow Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and lwip-based tun2socks.
 
 An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
 
@@ -22,7 +22,7 @@ Android Native (Kotlin)
     |  VpnService + AIDL IPC
     |  JNI (System.loadLibrary)
     v
-Rust FFI (libmihomo_android_ffi.so)
+Rust FFI (libmeow_android_ffi.so)
     |  lwip netstack tun2socks
     |  Per-socket VpnService.protect() via JNI
     v
@@ -93,7 +93,7 @@ The APK is at `mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk`.
 core/                           Android library module
   src/main/java/                Kotlin: VPN service, AIDL, Room DB
   src/main/rust/
-    mihomo-android-ffi/         Rust FFI crate (JNI + tun2socks)
+    meow-android-ffi/         Rust FFI crate (JNI + tun2socks)
 flutter_module/                 Flutter UI module
   lib/screens/                  Home, Subscriptions, Traffic, Connections,
                                 Logs, Rules, Per-app proxy, Settings

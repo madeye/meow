@@ -8,7 +8,7 @@ pub fn init_android_logger() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
-                .with_tag("mihomo-ffi"),
+                .with_tag("meow-ffi"),
         );
     });
 }
