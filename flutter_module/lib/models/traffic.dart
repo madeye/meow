@@ -1,12 +1,12 @@
-/// Traffic data from the mihomo external-controller WebSocket stream (/traffic).
+/// Traffic data from the meow external-controller WebSocket stream (/traffic).
 /// Distinct from [TrafficStats] which comes from the Kotlin EventChannel.
-class MihomoTraffic {
+class MeowTraffic {
   final int up;    // bytes per second upload
   final int down;  // bytes per second download
 
-  const MihomoTraffic({required this.up, required this.down});
+  const MeowTraffic({required this.up, required this.down});
 
-  factory MihomoTraffic.fromJson(Map<String, dynamic> json) => MihomoTraffic(
+  factory MeowTraffic.fromJson(Map<String, dynamic> json) => MeowTraffic(
         up: json['up'] as int? ?? 0,
         down: json['down'] as int? ?? 0,
       );

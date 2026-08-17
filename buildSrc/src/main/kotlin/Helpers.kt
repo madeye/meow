@@ -77,7 +77,7 @@ fun Project.setupApp() {
         buildTypes {
             getByName("debug") {
                 isPseudoLocalesEnabled = true
-                packagingOptions.doNotStrip("**/libmihomo_android_ffi.so")
+                packagingOptions.doNotStrip("**/libmeow_android_ffi.so")
             }
             getByName("release") {
                 isShrinkResources = true

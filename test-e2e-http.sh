@@ -39,7 +39,7 @@ cleanup() {
             echo "Killing $v ($pid)"; kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
         fi
     done
-    rm -rf /tmp/test-sub-http /tmp/mihomo-http.db /tmp/ui-http.xml
+    rm -rf /tmp/test-sub-http /tmp/meow-http.db /tmp/ui-http.xml
 }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -145,8 +145,8 @@ screenshot "01_init"
 "$ADB" shell am force-stop "$PKG"; sleep 2
 
 SUB_YAML=$(cat /tmp/test-sub-http/config.yaml)
-rm -f /tmp/mihomo-http.db
-sqlite3 /tmp/mihomo-http.db <<DBEOF
+rm -f /tmp/meow-http.db
+sqlite3 /tmp/meow-http.db <<DBEOF
 PRAGMA user_version = 4;
 CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT);
 INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42,'0ad45cbdd12706e49d09c67996a18e92');
@@ -164,10 +164,10 @@ INSERT INTO clash_profile (name, url, yaml_content, selected, last_updated, tx, 
 VALUES ('HTTP Proxy Test', 'http://$PROXY_HOST_FROM_EMU:9/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(date +%s), 0, 0, '', '');
 DBEOF
 
-"$ADB" push /tmp/mihomo-http.db /data/local/tmp/mihomo.db >/dev/null
-"$ADB" shell "cat /data/local/tmp/mihomo.db | run-as $PKG sh -c 'cat > databases/mihomo.db'"
-"$ADB" shell "run-as $PKG rm -f databases/mihomo.db-wal databases/mihomo.db-shm"
-"$ADB" shell rm -f /data/local/tmp/mihomo.db
+"$ADB" push /tmp/meow-http.db /data/local/tmp/meow.db >/dev/null
+"$ADB" shell "cat /data/local/tmp/meow.db | run-as $PKG sh -c 'cat > databases/meow.db'"
+"$ADB" shell "run-as $PKG rm -f databases/meow.db-wal databases/meow.db-shm"
+"$ADB" shell rm -f /data/local/tmp/meow.db
 info "DB injected"
 
 # Step 7: enable VPN + accept consent
@@ -248,6 +248,6 @@ if [[ "$PASS" -eq "$TOTAL" ]]; then
     echo "  ALL TESTS PASSED"; exit 0
 else
     echo "  SOME TESTS FAILED"
-    info "Relevant logcat:"; grep -iE "mihomo|meow|vpn|tun|http" "$LOGCAT_FILE" | tail -40 || true
+    info "Relevant logcat:"; grep -iE "meow|meow|vpn|tun|http" "$LOGCAT_FILE" | tail -40 || true
     exit 1
 fi

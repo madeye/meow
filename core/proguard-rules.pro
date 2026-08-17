@@ -1,1 +1,1 @@
--keep class io.github.madeye.meow.core.MihomoCore { *; }
+-keep class io.github.madeye.meow.core.MeowCore { *; }

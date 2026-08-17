@@ -1,6 +1,6 @@
 import 'proxy.dart';
 
-/// Group types as reported by mihomo's /proxies endpoint.
+/// Group types as reported by meow's /proxies endpoint.
 const _kGroupTypes = {
   'Selector',
   'URLTest',

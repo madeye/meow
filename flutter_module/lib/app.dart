@@ -11,8 +11,8 @@ final profileChanged = ValueNotifier<int>(0);
 
 void notifyProfileChanged() => profileChanged.value++;
 
-class MihomoApp extends StatelessWidget {
-  const MihomoApp({super.key});
+class MeowApp extends StatelessWidget {
+  const MeowApp({super.key});
 
   @override
   Widget build(BuildContext context) {

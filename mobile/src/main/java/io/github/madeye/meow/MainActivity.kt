@@ -5,7 +5,7 @@ import android.net.VpnService
 import android.os.Bundle
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.logEvent
-import io.github.madeye.meow.aidl.MihomoConnection
+import io.github.madeye.meow.aidl.MeowConnection
 import io.github.madeye.meow.aidl.TrafficStats
 import io.github.madeye.meow.bg.BaseService
 import io.github.madeye.meow.database.ClashProfile
@@ -26,7 +26,7 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.*
 import timber.log.Timber
 
-class MainActivity : FlutterActivity(), MihomoConnection.Callback {
+class MainActivity : FlutterActivity(), MeowConnection.Callback {
     companion object {
         private const val VPN_CHANNEL = "io.github.madeye.meow/vpn"
         private const val STATE_CHANNEL = "io.github.madeye.meow/vpn_state"
@@ -37,7 +37,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     private val analytics by lazy { FirebaseAnalytics.getInstance(this) }
-    private val connection = MihomoConnection(listenForBandwidth = true)
+    private val connection = MeowConnection(listenForBandwidth = true)
     private var state = BaseService.State.Idle
     private var stateEventSink: EventChannel.EventSink? = null
     private var trafficEventSink: EventChannel.EventSink? = null
@@ -62,7 +62,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
         // start. Idempotent; off the main thread to avoid first-run jank.
         scope.launch(Dispatchers.IO) {
             try {
-                io.github.madeye.meow.bg.MihomoInstance.prepareEngineHome(applicationContext)
+                io.github.madeye.meow.bg.MeowInstance.prepareEngineHome(applicationContext)
             } catch (e: Exception) {
                 Timber.w(e, "prepareEngineHome failed")
             }
@@ -172,7 +172,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         // Config is parsed/checked by meow-rs, never in Dart.
                         // Returns null when valid, else the engine's error string.
                         val yaml = call.argument<String>("yamlContent") ?: ""
-                        val core = io.github.madeye.meow.core.MihomoCore
+                        val core = io.github.madeye.meow.core.MeowCore
                         val code = core.nativeValidateConfig(yaml)
                         result.success(if (code == 0) null else core.nativeGetLastError())
                     }
@@ -256,7 +256,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                     }
                     "getVersion" -> {
                         try {
-                            result.success(io.github.madeye.meow.core.MihomoCore.nativeVersion())
+                            result.success(io.github.madeye.meow.core.MeowCore.nativeVersion())
                         } catch (_: Exception) {
                             result.success("unknown")
                         }
@@ -335,7 +335,7 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                     }
                     "getLogs" -> {
                         val raw = try {
-                            io.github.madeye.meow.core.MihomoCore.nativeGetLogs()
+                            io.github.madeye.meow.core.MeowCore.nativeGetLogs()
                         } catch (e: Throwable) {
                             ""
                         }
@@ -417,9 +417,9 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         ?: throw java.io.IOException("could not read file")
                     // Seed GeoIP DBs + set the home dir so meow-rs can validate
                     // configs that use GEOIP/GEOSITE rules even with the VPN off.
-                    io.github.madeye.meow.bg.MihomoInstance.prepareEngineHome(applicationContext)
+                    io.github.madeye.meow.bg.MeowInstance.prepareEngineHome(applicationContext)
                     Timber.d("import: read ${content.length} chars from $uri, validating")
-                    val core = io.github.madeye.meow.core.MihomoCore
+                    val core = io.github.madeye.meow.core.MeowCore
                     if (core.nativeValidateConfig(content) != 0) {
                         throw IllegalArgumentException(core.nativeGetLastError())
                     }

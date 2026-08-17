@@ -10,27 +10,27 @@ import '../models/runtime_config.dart';
 import '../models/proxy_provider.dart';
 import '../models/traffic.dart';
 
-/// Typed client for the mihomo external-controller REST API.
+/// Typed client for the meow external-controller REST API.
 ///
 /// Base URL is always [_kBaseUrl] — the loopback listener of the embedded Rust
-/// mihomo engine running inside the app process on-device.  No override is
+/// meow engine running inside the app process on-device.  No override is
 /// provided or permitted; see team-lead policy 2026-04-11.
 ///
-/// Production singleton: [MihomoApi.instance].
-/// Test-only constructor: [MihomoApi.withClient].
-class MihomoApi {
-  // Embedded mihomo engine external-controller. Matches MihomoInstance.kt:41.
+/// Production singleton: [MeowApi.instance].
+/// Test-only constructor: [MeowApi.withClient].
+class MeowApi {
+  // Embedded meow engine external-controller. Matches MeowInstance.kt:41.
   static const String _kBaseUrl = 'http://127.0.0.1:9090';
 
-  static MihomoApi? _instance;
-  static MihomoApi get instance => _instance ??= MihomoApi._();
+  static MeowApi? _instance;
+  static MeowApi get instance => _instance ??= MeowApi._();
 
   final http.Client _client;
 
-  MihomoApi._() : _client = http.Client();
+  MeowApi._() : _client = http.Client();
 
   /// Test-only: injects a fake [http.Client] (mocks transport, not the engine).
-  MihomoApi.withClient(this._client);
+  MeowApi.withClient(this._client);
 
   Uri _uri(String path, [Map<String, String>? query]) {
     final uri = Uri.parse('$_kBaseUrl$path');
@@ -213,9 +213,9 @@ class MihomoApi {
         jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  /// NOTE: The Rust-based mihomo engine used here does NOT expose the
+  /// NOTE: The Rust-based meow engine used here does NOT expose the
   /// /memory endpoint (that endpoint is Go-specific in meow-go). Callers
-  /// already catch MihomoApiException silently, so no code change is needed —
+  /// already catch MeowApiException silently, so no code change is needed —
   /// this will simply throw on every call with an HTTP error.
   Future<MemoryInfo> getMemory() async {
     final res = await _client.get(_uri('/memory'));
@@ -233,10 +233,10 @@ class MihomoApi {
         LogEntry.fromJson,
       );
 
-  Stream<MihomoTraffic> streamTraffic() => _streamJsonLines(
+  Stream<MeowTraffic> streamTraffic() => _streamJsonLines(
         Uri.parse(_kBaseUrl.replaceFirst('http', 'ws'))
             .replace(path: '/traffic'),
-        MihomoTraffic.fromJson,
+        MeowTraffic.fromJson,
       );
 
   // -------------------------------------------------------------------------
@@ -249,7 +249,7 @@ class MihomoApi {
 
   void _assertOkCode(int code, String label,
       {Set<int> okCodes = const {200}}) {
-    if (!okCodes.contains(code)) throw MihomoApiException(label, code);
+    if (!okCodes.contains(code)) throw MeowApiException(label, code);
   }
 
   /// WebSocket -> `Stream<T>` with reconnect. Implemented in Task 6.
@@ -297,12 +297,12 @@ class MihomoApi {
   }
 }
 
-class MihomoApiException implements Exception {
+class MeowApiException implements Exception {
   final String operation;
   final int statusCode;
-  const MihomoApiException(this.operation, this.statusCode);
+  const MeowApiException(this.operation, this.statusCode);
 
   @override
   String toString() =>
-      'MihomoApiException: $operation returned HTTP $statusCode';
+      'MeowApiException: $operation returned HTTP $statusCode';
 }

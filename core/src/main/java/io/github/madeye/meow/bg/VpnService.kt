@@ -29,7 +29,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     }
 
     override val data = BaseService.Data(this)
-    override val tag: String get() = "MihomoVpnService"
+    override val tag: String get() = "MeowVpnService"
     override fun createNotification(profileName: String): ServiceNotification =
         ServiceNotification(this, profileName, "service-vpn")
 
@@ -65,7 +65,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
     override suspend fun startProcesses() {
         val configDir = File(Core.deviceStorage.noBackupFilesDir, "meow")
         configDir.mkdirs()
-        data.mihomoInstance!!.start(configDir, this)
+        data.meowInstance!!.start(configDir, this)
         startVpn()
     }
 
@@ -73,7 +73,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
 
     private fun startVpn() {
         val builder = Builder()
-            .setSession("Mihomo VPN")
+            .setSession("Meow VPN")
             .setMtu(VPN_MTU)
             .addAddress(PRIVATE_VLAN4_CLIENT, 30)
             .addDnsServer(PRIVATE_VLAN4_ROUTER)
@@ -91,7 +91,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         // Note: we deliberately do NOT add the meow package to
         // `addDisallowedApplication` here. The engine and tun2socks run in
         // the `:vpn` process and rely on `VpnService.protect(fd)` (called
-        // from the patched mihomo-proxy connect hook and the mihomo-dns
+        // from the patched meow-proxy connect hook and the meow-dns
         // SocketFactory) to bypass the TUN on a per-socket basis. Excluding
         // the whole app's uid would also exempt traffic users may want to
         // intercept (e.g. a built-in browser preview) and would shadow the
@@ -133,7 +133,7 @@ class VpnService : BaseVpnService(), BaseService.Interface {
         }
         underlying?.let { setUnderlyingNetworks(arrayOf(it)) }
         Timber.d("VpnService: setUnderlyingNetworks=$underlying")
-        data.mihomoInstance!!.startTun2Socks(this, conn.fd)
+        data.meowInstance!!.startTun2Socks(this, conn.fd)
     }
 
     override fun onDestroy() {

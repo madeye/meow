@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../l10n/strings.dart';
 import '../models/rule.dart';
-import '../services/mihomo_api.dart';
+import '../services/meow_api.dart';
 
 class RulesScreen extends StatefulWidget {
   final Future<List<Rule>> Function()? getRulesOverride;
@@ -26,7 +26,7 @@ class _RulesScreenState extends State<RulesScreen> {
 
   Future<void> _load() async {
     try {
-      final getRules = widget.getRulesOverride ?? MihomoApi.instance.getRules;
+      final getRules = widget.getRulesOverride ?? MeowApi.instance.getRules;
       final rules = await getRules();
       if (mounted) {
         setState(() {

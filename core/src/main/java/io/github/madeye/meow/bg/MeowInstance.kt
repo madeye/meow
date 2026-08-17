@@ -3,12 +3,12 @@ package io.github.madeye.meow.bg
 import android.content.Context
 import io.github.madeye.meow.Core
 import io.github.madeye.meow.aidl.TrafficStats
-import io.github.madeye.meow.core.MihomoCore
+import io.github.madeye.meow.core.MeowCore
 import io.github.madeye.meow.database.ClashProfile
 import timber.log.Timber
 import java.io.File
 
-class MihomoInstance(val profile: ClashProfile) {
+class MeowInstance(val profile: ClashProfile) {
     val profileName: String get() = profile.name
 
     companion object {
@@ -20,13 +20,13 @@ class MihomoInstance(val profile: ClashProfile) {
 
         /// Seed bundled GeoX databases and register the home dir with meow-rs
         /// (which also sets `XDG_CONFIG_HOME`). Idempotent and cheap on repeat
-        /// calls. Needed before [MihomoCore.nativeValidateConfig] so config
+        /// calls. Needed before [MeowCore.nativeValidateConfig] so config
         /// validation (YAML editor, config import) can load the GeoIP DB even
         /// when the VPN has never been started this process.
         fun prepareEngineHome(context: Context): File {
             val dir = homeDir(context)
             copyGeoxAssets(context, dir)
-            MihomoCore.nativeSetHomeDir(dir.absolutePath)
+            MeowCore.nativeSetHomeDir(dir.absolutePath)
             return dir
         }
 
@@ -47,9 +47,9 @@ class MihomoInstance(val profile: ClashProfile) {
                     context.assets.open("geox/$assetName").use { input ->
                         target.outputStream().use { output -> input.copyTo(output) }
                     }
-                    Timber.d("MihomoInstance: seeded $targetName from assets (${target.length()} bytes)")
+                    Timber.d("MeowInstance: seeded $targetName from assets (${target.length()} bytes)")
                 } catch (e: Exception) {
-                    Timber.w(e, "MihomoInstance: failed to seed $targetName from assets")
+                    Timber.w(e, "MeowInstance: failed to seed $targetName from assets")
                 }
             }
         }
@@ -77,30 +77,30 @@ class MihomoInstance(val profile: ClashProfile) {
         val yaml = profile.yamlContent
             .replace(Regex("(?m)^subscriptions:.*?(?=^[a-z]|\\Z)", RegexOption.DOT_MATCHES_ALL), "")
         configFile.writeText(yaml)
-        MihomoCore.nativeSetHomeDir(configDir.absolutePath)
-        val result = MihomoCore.nativeStartEngine("127.0.0.1:9090", "")
+        MeowCore.nativeSetHomeDir(configDir.absolutePath)
+        val result = MeowCore.nativeStartEngine("127.0.0.1:9090", "")
         if (result != 0) {
-            throw RuntimeException("Failed to start engine: ${MihomoCore.nativeGetLastError()}")
+            throw RuntimeException("Failed to start engine: ${MeowCore.nativeGetLastError()}")
         }
-        Timber.d("MihomoInstance: engine started")
+        Timber.d("MeowInstance: engine started")
     }
 
     fun startTun2Socks(vpnService: android.net.VpnService, fd: Int) {
-        val result = MihomoCore.nativeStartTun2Socks(vpnService, fd, 1053)
+        val result = MeowCore.nativeStartTun2Socks(vpnService, fd, 1053)
         if (result != 0) {
-            throw RuntimeException("Failed to start tun2socks: ${MihomoCore.nativeGetLastError()}")
+            throw RuntimeException("Failed to start tun2socks: ${MeowCore.nativeGetLastError()}")
         }
-        Timber.d("MihomoInstance: tun2socks started")
+        Timber.d("MeowInstance: tun2socks started")
     }
 
     fun stop() {
-        MihomoCore.nativeStopEngine()
-        Timber.d("MihomoInstance: engine stopped")
+        MeowCore.nativeStopEngine()
+        Timber.d("MeowInstance: engine stopped")
     }
 
     fun requestTrafficUpdate(): TrafficStats {
-        val tx = MihomoCore.nativeGetUploadTraffic()
-        val rx = MihomoCore.nativeGetDownloadTraffic()
+        val tx = MeowCore.nativeGetUploadTraffic()
+        val rx = MeowCore.nativeGetDownloadTraffic()
         val now = System.currentTimeMillis()
         val elapsed = if (lastUpdate > 0) now - lastUpdate else 1000L
         val stats = TrafficStats(

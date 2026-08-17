@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# End-to-end test: mihomo-android on Android emulator
+# End-to-end test: meow-android on Android emulator
 #
 set -euo pipefail
 
@@ -213,8 +213,8 @@ SUB_YAML=$(cat /tmp/test-sub/config.yaml)
 # Schema must match core/schemas/io.github.madeye.meow.database.PrivateDatabase/4.json —
 # Room refuses to open a pre-packaged DB whose identity hash or column set drifts
 # from the generated schema, and the process crashes in Application.onCreate().
-rm -f /tmp/mihomo.db /tmp/mihomo.db-wal /tmp/mihomo.db-shm
-sqlite3 /tmp/mihomo.db <<DBEOF
+rm -f /tmp/meow.db /tmp/meow.db-wal /tmp/meow.db-shm
+sqlite3 /tmp/meow.db <<DBEOF
 PRAGMA user_version = 4;
 CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT);
 INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42,'0ad45cbdd12706e49d09c67996a18e92');
@@ -241,15 +241,20 @@ VALUES ('Test Sub', 'http://$SS_HOST_FROM_EMU:$SUB_PORT/config.yaml', '$(echo "$
 DBEOF
 
 info "  Verifying profile..."
-sqlite3 /tmp/mihomo.db "SELECT id, name, selected FROM clash_profile;" | while IFS= read -r line; do
+sqlite3 /tmp/meow.db "SELECT id, name, selected FROM clash_profile;" | while IFS= read -r line; do
     info "    Profile: $line"
 done
 
-# Push to device — use run-as to place it in app's database dir
-"$ADB" push /tmp/mihomo.db /data/local/tmp/mihomo.db
-"$ADB" shell "cat /data/local/tmp/mihomo.db | run-as $PKG sh -c 'cat > databases/mihomo.db'"
-"$ADB" shell "run-as $PKG rm -f databases/mihomo.db-wal databases/mihomo.db-shm"
-"$ADB" shell rm -f /data/local/tmp/mihomo.db
+# Push to device — use run-as to place it in app's database dir.
+# Deliberately injected under the LEGACY name mihomo.db: PrivateDatabase
+# renames it to meow.db on first open (mihomo→meow migration), so this
+# whole e2e doubles as a migration test — the VPN can only come up if the
+# app found the profile through the rename path. (test-e2e-http.sh injects
+# meow.db directly, covering the fresh-install path.)
+"$ADB" push /tmp/meow.db /data/local/tmp/meow.db
+"$ADB" shell "cat /data/local/tmp/meow.db | run-as $PKG sh -c 'cat > databases/mihomo.db'"
+"$ADB" shell "run-as $PKG rm -f databases/mihomo.db-wal databases/mihomo.db-shm databases/meow.db databases/meow.db-wal databases/meow.db-shm"
+"$ADB" shell rm -f /data/local/tmp/meow.db
 info "  Subscription configuration done."
 
 # Step 7: Enable VPN
@@ -453,14 +458,14 @@ echo "+-----+--------------------+--------+------------------------+"
 
 echo ""
 if [[ $PASS -eq $TOTAL ]]; then
-    info "Relevant logcat (VPN/mihomo):"
-    grep -iE "mihomo|meow|vpn|tun" "$LOGCAT_FILE" | tail -30 || true
+    info "Relevant logcat (VPN/meow):"
+    grep -iE "meow|meow|vpn|tun" "$LOGCAT_FILE" | tail -30 || true
     echo "  ALL TESTS PASSED"
     echo "  Full logcat: $LOGCAT_FILE"
     exit 0
 else
-    info "Relevant logcat (VPN/mihomo):"
-    grep -iE "mihomo|meow|vpn|tun" "$LOGCAT_FILE" | tail -50 || true
+    info "Relevant logcat (VPN/meow):"
+    grep -iE "meow|meow|vpn|tun" "$LOGCAT_FILE" | tail -50 || true
     echo "  SOME TESTS FAILED"
     echo "  Full logcat: $LOGCAT_FILE"
     exit 1

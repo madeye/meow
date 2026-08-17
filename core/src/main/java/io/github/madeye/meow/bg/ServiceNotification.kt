@@ -15,7 +15,7 @@ class ServiceNotification(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = service.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
-                NotificationChannel(channelId, "Mihomo VPN Service", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(channelId, "Meow VPN Service", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }

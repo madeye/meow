@@ -8,7 +8,7 @@ import '../models/traffic_stats.dart';
 import '../models/profile.dart';
 import '../models/proxy.dart';
 import '../models/proxy_group.dart';
-import '../services/mihomo_api.dart';
+import '../services/meow_api.dart';
 import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       var proxies = <String, Proxy>{};
       if (state == VpnState.connected) {
         try {
-          final result = await MihomoApi.instance.getProxies();
+          final result = await MeowApi.instance.getProxies();
           groups = result.selectableGroups;
           proxies = result.proxies;
         } catch (_) {
@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final idx = _groups.indexWhere((g) => g.name == group);
     if (idx < 0) return;
     try {
-      await MihomoApi.instance.selectProxy(group, node);
+      await MeowApi.instance.selectProxy(group, node);
       if (!mounted) return;
       final g = _groups[idx];
       setState(() {
@@ -119,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Run a latency probe across every member of [group] and refresh delays.
   Future<void> _testGroup(String group) async {
     try {
-      await MihomoApi.instance.testGroupDelay(group);
+      await MeowApi.instance.testGroupDelay(group);
     } catch (_) {
       // Ignore probe failures — surfaced as "--" in the UI.
     }
