@@ -28,13 +28,13 @@ missing_const_for_thread_local = "allow"
 # ECH (`ech-opts:`) and uTLS fingerprinting — without it those configs are
 # rejected at TlsLayer::new. Same trade-off as meow-ios: boring-sys vendors
 # BoringSSL (~few MB per ABI, needs cmake + NDK C++ at build time).
-meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel", "boring-tls"] }
-meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1" }
-meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality", "boring-tls"] }
-meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.1", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel"] }
+meow-tunnel = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2" }
+meow-config = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel", "boring-tls"] }
+meow-dns = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2" }
+meow-api = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2" }
+meow-common = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2" }
+meow-transport = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2", features = ["tls", "ws", "ech", "grpc", "h2", "httpupgrade", "reality", "boring-tls"] }
+meow-proxy = { git = "https://github.com/madeye/meow-rs.git", tag = "v0.20.2", features = ["ss", "trojan", "vless", "vless-vision", "vless-encryption", "vmess", "snell", "hysteria2", "anytls", "ech-tls-tunnel"] }
 
 # Explicit pin (transitive through meow-tunnel; surfaced here because
 # engine startup builds DashMap<String, Arc<ProxyProvider>> for ApiServer::new

@@ -503,7 +503,19 @@ pub extern "system" fn Java_io_github_madeye_meow_core_MeowCore_nativeValidateCo
     yaml: JString,
 ) -> jint {
     let yaml_str: String = env.get_string(&yaml).map(|s| s.into()).unwrap_or_default();
-    match get_runtime().block_on(meow_config::load_config_from_str(&yaml_str)) {
+    // Validate what the engine will actually load: the started engine runs
+    // the config through strip_and_inject (drops listener ports, sniffer,
+    // user dns, external-controller, …), so validating the raw YAML rejects
+    // configs that would run fine — e.g. mihomo's `external-controller:
+    // :9090` shorthand, stripped at start but fatal to a raw parse.
+    let stripped = match crate::engine::strip_and_inject(&yaml_str) {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("validate config: {}", e));
+            return -1;
+        }
+    };
+    match get_runtime().block_on(meow_config::load_config_from_str(&stripped)) {
         Ok(_) => 0,
         Err(e) => {
             set_error(format!("validate config: {}", e));
