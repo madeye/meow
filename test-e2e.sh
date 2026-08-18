@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EMULATOR="${EMULATOR:-/Volumes/Data/workspace/android/emulator/emulator}"
 ADB="${ADB:-/Volumes/Data/workspace/android/platform-tools/adb}"
 AVD="${AVD:-pixel8_meow}"
-APK="${APK:-$SCRIPT_DIR/mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk}"
+# ABI splits are disabled (Helpers.kt), so the debug build emits a single
+# mobile-debug.apk regardless of -PTARGET_ABI. Matches test-e2e-http.sh.
+APK="${APK:-$SCRIPT_DIR/mobile/build/outputs/apk/debug/mobile-debug.apk}"
 SSSERVER="${SSSERVER:-ssserver}"
 V2RAY_PLUGIN="${V2RAY_PLUGIN:-v2ray-plugin}"
 PKG="io.github.madeye.meow"
@@ -237,7 +239,9 @@ CREATE TABLE IF NOT EXISTS daily_traffic (
     PRIMARY KEY(date)
 );
 INSERT INTO clash_profile (name, url, yaml_content, selected, last_updated, tx, rx, selected_proxy, yaml_backup)
-VALUES ('Test Sub', 'http://$SS_HOST_FROM_EMU:$SUB_PORT/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(date +%s), 0, 0, '', '');
+-- last_updated is epoch MILLIseconds (SubscriptionService uses
+-- System.currentTimeMillis()); seeding seconds here rendered as 1970-01-21.
+VALUES ('Test Sub', 'http://$SS_HOST_FROM_EMU:$SUB_PORT/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(( $(date +%s) * 1000 )), 0, 0, '', '');
 DBEOF
 
 info "  Verifying profile..."

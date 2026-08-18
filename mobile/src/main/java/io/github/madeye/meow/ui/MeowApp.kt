@@ -19,6 +19,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -79,6 +80,7 @@ import io.github.madeye.meow.ui.screens.yaml.YamlEditorActions
 import io.github.madeye.meow.ui.screens.yaml.YamlEditorScreen
 import io.github.madeye.meow.ui.screens.yaml.YamlEditorViewModel
 import io.github.madeye.meow.ui.screens.yaml.rememberSoraEditorHandle
+import io.github.madeye.meow.ui.theme.meow
 import io.github.madeye.meow.ui.util.readText
 import io.github.madeye.meow.ui.util.rememberClipboardText
 import io.github.madeye.meow.ui.util.writeText
@@ -182,6 +184,16 @@ private fun BottomBar(navController: NavHostController, visible: Boolean) {
                 icon = { Icon(tab.icon, contentDescription = null) },
                 label = { Text(stringResource(tab.label)) },
                 modifier = Modifier.testTag(tab.testTag),
+                // M3 defaults the selected pill to secondaryContainer, which is
+                // the ginger brand accent here — selection has to read as the
+                // blue accent, same as the iOS tab bar.
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    unselectedIconColor = MaterialTheme.meow.mutedText,
+                    unselectedTextColor = MaterialTheme.meow.mutedText,
+                ),
             )
         }
     }
