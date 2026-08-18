@@ -8,7 +8,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <application>
+    <!-- Declared here rather than in :mobile because the loopback exemption it
+         grants exists solely for this module's controller-API client. -->
+    <application android:networkSecurityConfig="@xml/network_security_config">
         <service
             android:name="io.github.madeye.meow.bg.VpnService"
             android:exported="false"

@@ -257,11 +257,12 @@ private fun HomeRoute(
 }
 
 private fun startVpnService(context: android.content.Context) {
-    // minSdk is 24; startForegroundService is API 26+.
-    androidx.core.content.ContextCompat.startForegroundService(
-        context,
-        Intent(context, io.github.madeye.meow.bg.VpnService::class.java),
-    )
+    // Deliberately startService, not startForegroundService: nothing in the
+    // service ever calls startForeground(), so the foreground variant arms a
+    // watchdog that is never answered and ANRs :vpn ~10s later. This is only
+    // ever called from the visible Activity, so the background-start
+    // restriction does not apply.
+    context.startService(Intent(context, io.github.madeye.meow.bg.VpnService::class.java))
 }
 
 @Composable

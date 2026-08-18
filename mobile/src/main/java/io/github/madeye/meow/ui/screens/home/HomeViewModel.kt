@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 @Immutable
 data class ProxyNodeUi(
@@ -158,6 +159,9 @@ class HomeViewModel(
                     )
                 }
             } catch (e: MeowApiException) {
+                // An empty group list and a failed fetch look identical on
+                // screen, so the reason has to reach logcat or it is invisible.
+                Timber.w(e, "loading proxy groups failed")
                 emptyList()
             }
         }
