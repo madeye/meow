@@ -203,7 +203,18 @@ info "APK installed."
 info "Step 6: Configuring subscription..."
 info "  Launching app to initialize databases..."
 "$ADB" shell am start -W -n "$PKG/.MainActivity"
-sleep 8
+# Wait for Application.onCreate to actually create the Room database rather than
+# assuming a fixed delay: `am start -W` reports "timeout" on a slow emulator and
+# returns before the app has finished starting, and force-stopping too early
+# leaves no databases/ directory for the seeding step below to write into.
+info "  Waiting for the app to create its database..."
+for i in $(seq 1 60); do
+    if "$ADB" shell "run-as $PKG ls databases/meow.db" >/dev/null 2>&1; then
+        info "  Database created after ${i}s"
+        break
+    fi
+    sleep 1
+done
 screenshot "01_init"
 "$ADB" shell am force-stop "$PKG"
 sleep 2
@@ -274,20 +285,31 @@ info "Step 7: Enabling VPN..."
 # screen's Modifier.testTag("home_root") surfaces as a resource-id in the
 # uiautomator dump. Matching on that instead of on visible text keeps this check
 # independent of locale and of any copy changes.
+# On a fresh install the VPN consent dialog usually appears before the home
+# screen finishes composing, and it owns the window uiautomator dumps — so
+# accept either signal. Both mean the app launched and acted on auto_connect.
 info "  Waiting for Compose UI to render..."
 UI_READY=false
 for i in $(seq 1 30); do
-    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml 2>/dev/null || true
+    # Delete first: /sdcard survives uninstall, so a failed dump would leave the
+    # previous run's XML in place and we would match a screen from minutes ago.
+    "$ADB" shell rm -f /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml >/dev/null 2>&1 || true
     UI_CHECK=$("$ADB" shell cat /sdcard/ui_dump.xml 2>/dev/null || true)
     if echo "$UI_CHECK" | grep -q 'resource-id="home_root"'; then
         UI_READY=true
         info "  Compose UI loaded (attempt $i)"
         break
     fi
+    if echo "$UI_CHECK" | grep -q 'package="com.android.vpndialogs"'; then
+        UI_READY=true
+        info "  VPN consent dialog is up — app launched (attempt $i)"
+        break
+    fi
     sleep 1
 done
 if [[ "$UI_READY" != "true" ]]; then
-    info "  WARNING: Compose UI not detected after 30s, proceeding anyway"
+    info "  WARNING: app UI not detected after 30s, proceeding anyway"
 fi
 screenshot "02_app_launched"
 
@@ -298,8 +320,12 @@ VPN_ACCEPTED=false
 # Helper: dump UI and find the VPN consent dialog's positive button.
 # Taps it and returns 0. Returns 1 if no suitable button found.
 try_dismiss_vpn_dialog() {
-    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml 2>/dev/null || true
-    "$ADB" pull /sdcard/ui_dump.xml /tmp/ui_dump.xml 2>/dev/null || true
+    # Clear both copies first. Neither /sdcard nor /tmp is cleaned between runs,
+    # so a failed dump would otherwise leave us deciding based on a stale screen.
+    "$ADB" shell rm -f /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    rm -f /tmp/ui_dump.xml
+    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    "$ADB" pull /sdcard/ui_dump.xml /tmp/ui_dump.xml >/dev/null 2>&1 || true
     local ui_xml
     ui_xml=$(cat /tmp/ui_dump.xml 2>/dev/null || true)
 
@@ -384,7 +410,18 @@ fi
 # Step 8: Verify connectivity
 ensure_emulator
 info "Step 8: Verifying VPN connection..."
-sleep 8
+# Wait for the tunnel rather than sleeping a fixed amount. Bringing up the
+# engine can take well over 30s on a cold or heavily loaded emulator, and a
+# blind sleep turns that into a spurious "tun0 not found".
+info "  Waiting for tun0 (up to ${TUN_WAIT_SECS:-60}s)..."
+for i in $(seq 1 "${TUN_WAIT_SECS:-60}"); do
+    if "$ADB" shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
+        info "  tun0 is up after ${i}s"
+        break
+    fi
+    sleep 1
+done
+sleep 3   # let the first flows settle once the interface exists
 screenshot "05_vpn_status"
 
 PASS=0
