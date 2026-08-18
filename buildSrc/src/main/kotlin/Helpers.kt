@@ -21,9 +21,8 @@ val Project.currentFlavor get() = gradle.startParameter.taskNames.let { tasks ->
 }
 
 fun Project.setupCommon() {
-    // JVM 17 — required by sora-editor (and matches the Flutter add-to-app
-    // submodule which already builds at 17). Bumped from 11 when adding
-    // sora-editor; the inline functions in sora-editor are compiled at 17.
+    // JVM 17 — required by sora-editor, whose inline functions are compiled at
+    // 17. Bumped from 11 when sora-editor was added.
     val javaVersion = JavaVersion.VERSION_17
     android.apply {
         compileSdkVersion(36)

@@ -64,10 +64,6 @@ android {
 
 dependencies {
     coreLibraryDesugaring(libs.desugar)
-    // TODO(compose-ui): removed together with flutter_module once MainActivity
-    // stops extending FlutterActivity. Kept so the tree still builds while the
-    // Compose theme/components and the :core API client land ahead of the cut.
-    implementation(project(":flutter"))
 
     implementation(platform(libs.compose.bom))
     androidTestImplementation(platform(libs.compose.bom))

@@ -54,7 +54,10 @@ fun DelayBadge(
                     else -> colors.danger
                 }
                 Text(
-                    text = "$delayMs ms",
+                    text = androidx.compose.ui.res.stringResource(
+                        io.github.madeye.meow.R.string.proxy_delay_ms,
+                        delayMs,
+                    ),
                     style = MaterialTheme.typography.labelMedium.merge(MeowTextStyles.monoDigits),
                     color = tint,
                     textAlign = TextAlign.End,

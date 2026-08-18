@@ -5,9 +5,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 ```bash
-# Prerequisites (one-time)
-cd flutter_module && flutter pub get && cd ..
-
 # Build debug APK (arm64 only, release Rust for smaller .so)
 export JAVA_HOME=/path/to/jdk17
 ./gradlew :mobile:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release
@@ -45,23 +42,27 @@ cd core/src/main/rust/meow-android-ffi && cargo clippy -- -D warnings && cd -
 # Rust format check
 cd core/src/main/rust/meow-android-ffi && cargo fmt --check && cd -
 
-# Flutter analyze
-cd flutter_module && flutter analyze && cd -
+# Unit tests (engine API client + en/zh string parity)
+./gradlew :core:testDebugUnitTest :mobile:testDebugUnitTest
 ```
 
-Run Android lint after Kotlin changes, clippy/rustfmt after Rust changes, and flutter analyze after Dart changes.
+Run Android lint and the unit tests after Kotlin changes, clippy/rustfmt after Rust changes.
 
 ## Architecture
 
-Three-layer stack: **Flutter UI → Kotlin VPN Service → Rust FFI**
+Three-layer stack: **Compose UI → Kotlin VPN Service → Rust FFI**
 
 ```
-Flutter (Dart)                    MethodChannel("io.github.madeye.meow/vpn")
-    ↕                             EventChannel("io.github.madeye.meow/vpn_state")
-Kotlin (Android)                  EventChannel("io.github.madeye.meow/traffic")
+Compose (Kotlin)                  ViewModels ← StateFlow ← VpnStateRepository
+    ↕ direct calls                                          (AIDL callbacks)
+Kotlin (Android)                  MeowApi (OkHttp) → 127.0.0.1:9090
     ↕ JNI
 Rust (libmeow_android_ffi.so)   lwip netstack tun2socks + meow-rs engine
 ```
+
+The UI runs in the same process as the Kotlin layer and calls it directly —
+there is no serialization boundary between them. The one remote hop is the
+engine's own controller API on loopback, which crosses into `:vpn`.
 
 ### Rust FFI (`core/src/main/rust/meow-android-ffi/`)
 
@@ -80,24 +81,48 @@ Rust (libmeow_android_ffi.so)   lwip netstack tun2socks + meow-rs engine
 - **core/MeowCore.kt**: JNI bridge object. `System.loadLibrary("meow_android_ffi")`.
 - **database/**: Room database with `ClashProfile` entity (id, name, url, yamlContent, selected, lastUpdated, tx, rx).
 
-### Flutter UI (`flutter_module/lib/`)
+### Engine API client (`core/src/main/java/io/github/madeye/meow/api/`)
 
-- **app.dart**: MaterialApp with 4-tab NavigationBar (Home, Subscribe, Traffic, Settings). `profileChanged` ValueNotifier bridges subscription changes to home screen reload.
-- **services/vpn_channel.dart**: Singleton wrapping MethodChannel/EventChannel for VPN control, profile CRUD, traffic streams.
-- **services/meow_api.dart**: Typed REST/WebSocket client for the embedded meow external-controller (always `http://127.0.0.1:9090`, no override — see `MeowInstance.kt`). Powers the connections/logs/rules/traffic live views. `services/traffic_history.dart` keeps a rolling traffic window.
-- **l10n/strings.dart**: Map-based i18n (English default, Chinese via `_Zh` subclass). Uses `S.of(context)` pattern.
-- **screens/**: `home_screen.dart` (Switch toggle + proxy node list), `traffic_screen.dart` (speed chart + session cards), plus `connections_screen`, `logs_screen`, `rules_screen` (driven by `meow_api.dart`), `subscriptions_screen` + `yaml_editor_screen` (profile/YAML editing), `per_app_proxy_screen`, and `settings_screen`.
+- **MeowApi.kt**: OkHttp + kotlinx-serialization client for the embedded engine's
+  Clash-compatible controller (`http://127.0.0.1:9090`, started by `MeowInstance`).
+  Proxies/groups, delay probes, rules, connections, configs, and the `/logs`
+  websocket (500ms→30s reconnect ramp). `baseUrl` is injectable for tests.
+- **MeowApiModels.kt**: `/proxies` is a heterogeneous map discriminated by a field
+  *value*, so it is parsed by hand; `ProxyHistory.time` accepts both the Go string
+  and Rust `SystemTime` encodings.
+
+### State layer (`core/src/main/java/io/github/madeye/meow/{vpn,repo}/`)
+
+- **vpn/VpnStateRepository.kt**: AIDL callbacks → `StateFlow`. Bound per-Activity.
+- **vpn/DailyTrafficRecorder.kt**, **vpn/SpeedSampleStore.kt**: per-day totals and
+  the rolling speed window. Both process-scoped so tab switches don't reset them.
+- **repo/**: profiles/subscriptions, per-app proxy, traffic history, config validation.
+
+### Compose UI (`mobile/src/main/java/io/github/madeye/meow/ui/`)
+
+- **MeowApp.kt**: navigation-compose host. Four tabs (Home, Subscribe, Traffic,
+  Settings); Connections/Rules/Logs/Per-App Proxy/YAML editor are pushed routes.
+  Sets `testTagsAsResourceId` so `test-e2e.sh` can match on stable resource ids.
+- **theme/**: brand tokens ported from meow-ios (`GlassCard.swift`). Fixed palette —
+  no Material You dynamic color.
+- **components/**: `GlassCard` (the universal surface), `SectionHeader`, `NavRow`,
+  `DelayBadge`, `MeowScaffold` (gradient background + transparent app bar).
+- **charts/**: hand-drawn `Canvas` charts — 30-day stacked bars with tap-to-select,
+  and the live dual-series speed chart.
+- **screens/**: one package per screen, each a stateless composable plus a ViewModel.
+- Strings live in `res/values/strings.xml` + `values-zh-rCN`; `StringsParityTest`
+  fails the build if the two drift apart.
 
 ### Key Data Flow
 
-1. User taps VPN switch → Flutter `MethodChannel.invokeMethod('connect')` → Kotlin `startForegroundService(VpnService)` → `MeowInstance.start()` writes config.yaml → JNI `nativeStartEngine()` → Rust starts tokio runtime, tunnel, API server → JNI `nativeStartTun2Socks(vpnService, fd, 1053)` → Rust installs the `SocketProtector` (JNI shim around `VpnService.protect`) into meow-common, then starts the lwip netstack reading from TUN fd.
+1. User taps VPN switch → `HomeViewModel` → `VpnService.prepare()` (consent, via `rememberLauncherForActivityResult`) → `startForegroundService(VpnService)` → `MeowInstance.start()` writes config.yaml → JNI `nativeStartEngine()` → Rust starts tokio runtime, tunnel, API server → JNI `nativeStartTun2Socks(vpnService, fd, 1053)` → Rust installs the `SocketProtector` (JNI shim around `VpnService.protect`) into meow-common, then starts the lwip netstack reading from TUN fd.
 
 2. App traffic → TUN → tun2socks intercepts: UDP port 53 → in-process DNS (engine `meow_dns::Resolver` for A/AAAA, upstream passthrough otherwise); TCP → lwip netstack accepts → `meow_tunnel::tcp::handle_tcp(&inner, NetstackConn(stream), metadata)` → meow routes via rules → proxy adapter (SS/Trojan/Direct) dials via `meow_common::connect_tcp` → installed `SocketProtector` fires `VpnService.protect(fd)` → connect bypasses VPN → remote server.
 
 ## Module Dependencies
 
 ```
-mobile → core, flutter
+mobile → core (Compose lives only in :mobile; :core stays UI-free)
 core → rust (via rust-android-gradle cargo plugin)
 meow-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.20.1)
                    → lwip (patched madeye/lwip rev), jni, android_logger, redb, mimalloc

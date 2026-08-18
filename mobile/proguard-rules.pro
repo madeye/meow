@@ -1,9 +1,11 @@
-# Flutter add-to-app: the engine registers plugins by reflecting on
-# io.flutter.plugins.GeneratedPluginRegistrant.registerWith (generated into
-# flutter_module/.android, which carries no consumer proguard rules). If R8
-# renames or strips it, plugin registration silently fails at startup and
-# every MethodChannel (VPN control included) is dead in release builds.
--keep class io.flutter.plugins.GeneratedPluginRegistrant { *; }
+# Navigation Compose resolves type-safe routes reflectively through
+# kotlinx.serialization. R8 has no reference to the generated serializers, so
+# without this every navigate() throws — and only in minified builds.
+-keep,includedescriptorclasses class io.github.madeye.meow.ui.nav.** { *; }
+-keepclassmembers class io.github.madeye.meow.ui.nav.** {
+    *** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
+}
 
 # Sora Editor + TextMate (tm4e) — Gson reflects on grammar/theme model classes
 # loaded from textmate/languages.json and grammar JSON files. R8 strips

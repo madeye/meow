@@ -10,6 +10,7 @@ class App : Application() {
         super.onCreate()
         Timber.plant(Timber.DebugTree())
         Core.init(this)
+        AppGraph.init(this)
         // Ensure database is created on first launch
         PrivateDatabase.profileDao.getAll()
         // Sora Editor TextMate registries are process-global; populate once.

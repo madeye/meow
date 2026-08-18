@@ -264,22 +264,26 @@ info "Step 7: Enabling VPN..."
 # Launch app with auto_connect=true intent extra — triggers VPN start once service reports Stopped
 "$ADB" shell am start -W -n "$PKG/.MainActivity" --ez auto_connect true
 
-# Wait for Flutter UI to load (splash screen takes several seconds)
-info "  Waiting for Flutter UI to render..."
-FLUTTER_READY=false
+# Wait for the Compose UI to render its first frame.
+#
+# The root sets Modifier.semantics { testTagsAsResourceId = true }, so the home
+# screen's Modifier.testTag("home_root") surfaces as a resource-id in the
+# uiautomator dump. Matching on that instead of on visible text keeps this check
+# independent of locale and of any copy changes.
+info "  Waiting for Compose UI to render..."
+UI_READY=false
 for i in $(seq 1 30); do
     "$ADB" shell uiautomator dump /sdcard/ui_dump.xml 2>/dev/null || true
     UI_CHECK=$("$ADB" shell cat /sdcard/ui_dump.xml 2>/dev/null || true)
-    # Flutter home screen has the app title "Meow" or Chinese equivalent
-    if echo "$UI_CHECK" | grep -qiE 'text="Meow"|text=".*断开.*"|text=".*连接.*"'; then
-        FLUTTER_READY=true
-        info "  Flutter UI loaded (attempt $i)"
+    if echo "$UI_CHECK" | grep -q 'resource-id="home_root"'; then
+        UI_READY=true
+        info "  Compose UI loaded (attempt $i)"
         break
     fi
     sleep 1
 done
-if [[ "$FLUTTER_READY" != "true" ]]; then
-    info "  WARNING: Flutter UI not detected after 30s, proceeding anyway"
+if [[ "$UI_READY" != "true" ]]; then
+    info "  WARNING: Compose UI not detected after 30s, proceeding anyway"
 fi
 screenshot "02_app_launched"
 
@@ -320,7 +324,7 @@ try_dismiss_vpn_dialog() {
         ok_line=$(echo "$ui_xml" | tr '>' '\n' | grep 'package="com.android.vpndialogs"' | grep -iE 'text="(OK|Ok|ok|Allow|ALLOW|Got it|GOT IT|Okay|OKAY|确定|允许)"' | head -1 || true)
     fi
 
-    # No Strategy 3 — tapping arbitrary buttons is dangerous (can hit Flutter nav bar)
+    # No Strategy 3 — tapping arbitrary buttons is dangerous (can hit the app's own nav bar)
 
     if [[ -n "$ok_line" ]]; then
         tap_bounds "$ok_line" "VPN dialog button"

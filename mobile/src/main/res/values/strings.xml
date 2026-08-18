@@ -1,5 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ported from flutter_module/lib/l10n/strings.dart.
+
+  Keys are <screen>_<element>, matching the ui/screens package names. Byte
+  counts, transfer rates and dates are NOT string resources — they go through
+  ui/util/Formatters.kt so the formatting rules live in one place.
+
+  values-zh-rCN must carry every key here; StringsParityTest enforces it.
+-->
 <resources>
     <string name="app_name">Meow</string>
     <color name="ic_launcher_background">#27BCFD</color>
+
+    <!-- Tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_subscribe">Subscribe</string>
+    <string name="tab_traffic">Traffic</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_save">Save</string>
+    <string name="common_add">Add</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_select">Select</string>
+    <string name="common_refresh">Refresh</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_discard">Discard</string>
+    <string name="common_back">Back</string>
+
+    <!-- Home -->
+    <string name="home_not_connected">Not Connected</string>
+    <string name="home_connecting">Connecting…</string>
+    <string name="home_connected">Connected</string>
+    <string name="home_disconnecting">Disconnecting…</string>
+    <string name="home_disconnected">Disconnected</string>
+    <string name="home_no_subscription_hint">No subscription selected.\nGo to the Subscribe tab to add one.</string>
+    <string name="home_upload">Upload</string>
+    <string name="home_download">Download</string>
+    <string name="home_vpn_toggle">Toggle VPN</string>
+
+    <!-- Proxy groups -->
+    <string name="proxy_groups_title">Proxy Groups</string>
+    <string name="proxy_no_groups">No proxy groups found.\nConnect the VPN to load groups.</string>
+    <string name="proxy_url_test_all">URL Test All</string>
+    <string name="proxy_delay_ms">%1$d ms</string>
+
+    <!-- Subscriptions -->
+    <string name="subs_title">Subscriptions</string>
+    <string name="subs_none">No subscriptions</string>
+    <string name="subs_add">Add Subscription</string>
+    <string name="subs_edit">Edit Subscription</string>
+    <string name="subs_delete_confirm">Delete \"%1$s\"?</string>
+    <string name="subs_name">Name</string>
+    <string name="subs_url">Subscription URL</string>
+    <string name="subs_paste">Paste from clipboard</string>
+    <string name="subs_clipboard_empty">Clipboard is empty</string>
+    <string name="subs_add_from_url">Add from URL</string>
+    <string name="subs_import_from_file">Import from file</string>
+    <string name="subs_export">Export</string>
+    <string name="subs_edit_yaml">Edit YAML</string>
+    <string name="subs_updated">%1$s updated</string>
+    <string name="subs_last_updated">Updated %1$s</string>
+    <string name="subs_refresh_failed">Refresh failed: %1$s</string>
+    <string name="subs_imported">Imported \"%1$s\"</string>
+    <string name="subs_import_failed">Import failed: %1$s</string>
+    <string name="subs_export_saved">Config exported</string>
+    <string name="subs_export_failed">Export failed: %1$s</string>
+
+    <!-- YAML editor -->
+    <string name="yaml_valid">Valid config</string>
+    <string name="yaml_config_invalid">Invalid config: %1$s</string>
+    <string name="yaml_revert">Revert</string>
+    <string name="yaml_revert_confirm">Revert to the last downloaded version?</string>
+    <string name="yaml_discard_changes">Discard unsaved changes?</string>
+    <string name="yaml_saved">Config saved</string>
+    <string name="yaml_reverted">Reverted to original</string>
+
+    <!-- Traffic -->
+    <string name="traffic_title">Traffic</string>
+    <string name="traffic_data_usage">Data Usage</string>
+    <string name="traffic_today">Today</string>
+    <string name="traffic_this_month">This Month</string>
+    <string name="traffic_daily_history">Last 30 Days</string>
+    <string name="traffic_no_history">No traffic history yet</string>
+    <string name="traffic_tap_bar_hint">Tap a bar to see details</string>
+    <string name="traffic_current_session">Current Session</string>
+    <string name="traffic_speed">Speed</string>
+    <string name="traffic_total">Total: %1$s</string>
+    <string name="traffic_collecting">Collecting data…</string>
+    <string name="traffic_connect_to_see">Connect the VPN to see traffic</string>
+    <string name="traffic_upload">Upload</string>
+    <string name="traffic_download">Download</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_general">General</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_engine">Engine</string>
+    <string name="settings_engine_section">Engine</string>
+    <string name="settings_engine_offline">Connect the VPN to use this</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_dns_server">DNS Server</string>
+    <string name="settings_dns_builtin">Plain TCP via tunnel</string>
+    <string name="settings_about">About</string>
+    <string name="settings_source_code">Source Code</string>
+    <string name="settings_source_url">github.com/madeye/meow</string>
+    <string name="settings_version_unavailable">Not available</string>
+
+    <!-- Logs -->
+    <string name="logs_title">Logs</string>
+    <string name="logs_empty">No logs yet</string>
+    <string name="logs_auto_scroll">Auto-scroll</string>
+
+    <!-- Connections -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_empty">No active connections</string>
+    <string name="connections_close_all">Close All</string>
+    <string name="connections_close_all_confirm">Close all active connections?</string>
+    <string name="connections_filter">Filter by host…</string>
+
+    <!-- Rules -->
+    <string name="rules_title">Rules</string>
+    <string name="rules_empty">No rules found.\nConnect the VPN to load rules.</string>
+    <string name="rules_filter">Filter by type, payload or proxy…</string>
+    <string name="rules_load_error">Failed to load rules</string>
+    <plurals name="rules_count">
+        <item quantity="one">%1$d rule</item>
+        <item quantity="other">%1$d rules</item>
+    </plurals>
+
+    <!-- Per-app proxy -->
+    <string name="perapp_title">Per-App Proxy</string>
+    <string name="perapp_desc">Select which apps use the VPN</string>
+    <string name="perapp_mode_proxy">Proxy Selected</string>
+    <string name="perapp_mode_bypass">Bypass Selected</string>
+    <string name="perapp_search">Search apps…</string>
+    <string name="perapp_show_system">Show system apps</string>
+    <string name="perapp_select_all">Select All</string>
+    <string name="perapp_deselect_all">Deselect All</string>
+    <string name="perapp_disabled_hint">Disabled while no apps are selected</string>
+    <string name="perapp_restart_required">Reconnect the VPN to apply changes</string>
+    <plurals name="perapp_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
 </resources>
