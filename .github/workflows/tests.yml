@@ -10,8 +10,9 @@ on:
 jobs:
   # Replaces the old flutter-test job. Covers the engine API client (against a
   # MockWebServer) and en/zh-rCN string parity — the Kotlin equivalents of what
-  # the Dart tests used to check. No NDK or emulator needed: these are plain JVM
-  # tests, so the job stays fast.
+  # the Dart tests used to check. These are plain JVM tests and pull in no cargo
+  # tasks, but :core still needs the NDK present to *configure*, so the install
+  # step below is not optional.
   unit-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -30,6 +31,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Install Android NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.2.13676358" "ndk;27.0.12077973"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v6
