@@ -11,6 +11,7 @@ plugins {
     id("org.mozilla.rust-android-gradle.rust-android")
     kotlin("android")
     id("kotlin-parcelize")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 setupCore()
@@ -194,9 +195,15 @@ dependencies {
     api(libs.kotlinx.coroutines.android)
     api(libs.material)
     api(libs.timber)
+    // The engine's Clash-compatible API client lives here (see api/MeowApi.kt).
+    // `api` rather than `implementation` because :mobile consumes the DTOs directly.
+    api(libs.okhttp)
+    api(libs.kotlinx.serialization.json)
     coreLibraryDesugaring(libs.desugar)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit.ktx)
     androidTestImplementation(libs.androidx.room.testing)

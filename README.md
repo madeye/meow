@@ -2,7 +2,7 @@
 
 ![Feature Graphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
-A Clash/meow Android client with Flutter UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and lwip-based tun2socks.
+A Clash/meow Android client with a native Jetpack Compose UI, powered by [meow-rs](https://github.com/madeye/meow-rs) and lwip-based tun2socks.
 
 An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madeye/meow-ios).
 
@@ -15,8 +15,8 @@ An iOS port is in public beta — see [madeye/meow-ios](https://github.com/madey
 ## Architecture
 
 ```
-Flutter UI (Dart)
-    |  MethodChannel / EventChannel
+Compose UI (Kotlin)
+    |  ViewModels over StateFlow; OkHttp to the engine's loopback API
     v
 Android Native (Kotlin)
     |  VpnService + AIDL IPC
@@ -45,7 +45,7 @@ Network
 - **Socket Protection**: Per-socket `VpnService.protect(fd)` via JNI callback
 - **REST API**: Embedded external controller (`127.0.0.1:9090`) drives the
   live connections, logs, rules, and traffic views
-- **Flutter UI**: Shadowrocket-style tab view
+- **Compose UI**: Shadowrocket-style tab view, styled to match the iOS app
   - Home: VPN toggle, proxy group & node selection, connection status
   - Subscribe: Add/edit/remove subscriptions, YAML editor, import/export config
   - Traffic: Real-time speed chart, session upload/download stats
@@ -64,15 +64,11 @@ Network
   ```
   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
   ```
-- Flutter SDK (3.x)
 - JDK 17
 
 ### Build
 
 ```bash
-# Generate Flutter module files
-cd flutter_module && flutter pub get && cd ..
-
 # Build debug APK (arm64 only, release Rust)
 export JAVA_HOME=/path/to/jdk17
 ./gradlew :mobile:assembleDebug -PTARGET_ABI=arm64 -PCARGO_PROFILE=release
@@ -94,12 +90,14 @@ core/                           Android library module
   src/main/java/                Kotlin: VPN service, AIDL, Room DB
   src/main/rust/
     meow-android-ffi/         Rust FFI crate (JNI + tun2socks)
-flutter_module/                 Flutter UI module
-  lib/screens/                  Home, Subscriptions, Traffic, Connections,
-                                Logs, Rules, Per-app proxy, Settings
-  lib/services/                 VPN channel, REST API client, traffic history
-  lib/l10n/                     Localization (en, zh_CN)
-mobile/                         Android app module (FlutterActivity host)
+  src/main/java/.../api/        Engine controller client (REST + websocket)
+  src/main/java/.../repo/       Profiles, per-app proxy, traffic history
+mobile/                         Android app module (Compose UI host)
+  src/main/java/.../ui/theme/   Brand tokens shared with the iOS app
+  src/main/java/.../ui/screens/ Home, Subscribe, Traffic, Settings,
+                                Connections, Logs, Rules, Per-app proxy,
+                                YAML editor
+  src/main/res/values{,-zh-rCN} Localization (en, zh_CN)
 test-e2e.sh                     End-to-end test script (Shadowsocks)
 test-e2e-http.sh                End-to-end test script (HTTP proxy)
 ```

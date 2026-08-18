@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EMULATOR="${EMULATOR:-/Volumes/Data/workspace/android/emulator/emulator}"
 ADB="${ADB:-/Volumes/Data/workspace/android/platform-tools/adb}"
 AVD="${AVD:-pixel8_meow}"
-APK="${APK:-$SCRIPT_DIR/mobile/build/outputs/apk/debug/mobile-arm64-v8a-debug.apk}"
+# ABI splits are disabled (Helpers.kt), so the debug build emits a single
+# mobile-debug.apk regardless of -PTARGET_ABI. Matches test-e2e-http.sh.
+APK="${APK:-$SCRIPT_DIR/mobile/build/outputs/apk/debug/mobile-debug.apk}"
 SSSERVER="${SSSERVER:-ssserver}"
 V2RAY_PLUGIN="${V2RAY_PLUGIN:-v2ray-plugin}"
 PKG="io.github.madeye.meow"
@@ -201,7 +203,18 @@ info "APK installed."
 info "Step 6: Configuring subscription..."
 info "  Launching app to initialize databases..."
 "$ADB" shell am start -W -n "$PKG/.MainActivity"
-sleep 8
+# Wait for Application.onCreate to actually create the Room database rather than
+# assuming a fixed delay: `am start -W` reports "timeout" on a slow emulator and
+# returns before the app has finished starting, and force-stopping too early
+# leaves no databases/ directory for the seeding step below to write into.
+info "  Waiting for the app to create its database..."
+for i in $(seq 1 60); do
+    if "$ADB" shell "run-as $PKG ls databases/meow.db" >/dev/null 2>&1; then
+        info "  Database created after ${i}s"
+        break
+    fi
+    sleep 1
+done
 screenshot "01_init"
 "$ADB" shell am force-stop "$PKG"
 sleep 2
@@ -237,7 +250,9 @@ CREATE TABLE IF NOT EXISTS daily_traffic (
     PRIMARY KEY(date)
 );
 INSERT INTO clash_profile (name, url, yaml_content, selected, last_updated, tx, rx, selected_proxy, yaml_backup)
-VALUES ('Test Sub', 'http://$SS_HOST_FROM_EMU:$SUB_PORT/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(date +%s), 0, 0, '', '');
+-- last_updated is epoch MILLIseconds (SubscriptionService uses
+-- System.currentTimeMillis()); seeding seconds here rendered as 1970-01-21.
+VALUES ('Test Sub', 'http://$SS_HOST_FROM_EMU:$SUB_PORT/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(( $(date +%s) * 1000 )), 0, 0, '', '');
 DBEOF
 
 info "  Verifying profile..."
@@ -264,22 +279,37 @@ info "Step 7: Enabling VPN..."
 # Launch app with auto_connect=true intent extra — triggers VPN start once service reports Stopped
 "$ADB" shell am start -W -n "$PKG/.MainActivity" --ez auto_connect true
 
-# Wait for Flutter UI to load (splash screen takes several seconds)
-info "  Waiting for Flutter UI to render..."
-FLUTTER_READY=false
+# Wait for the Compose UI to render its first frame.
+#
+# The root sets Modifier.semantics { testTagsAsResourceId = true }, so the home
+# screen's Modifier.testTag("home_root") surfaces as a resource-id in the
+# uiautomator dump. Matching on that instead of on visible text keeps this check
+# independent of locale and of any copy changes.
+# On a fresh install the VPN consent dialog usually appears before the home
+# screen finishes composing, and it owns the window uiautomator dumps — so
+# accept either signal. Both mean the app launched and acted on auto_connect.
+info "  Waiting for Compose UI to render..."
+UI_READY=false
 for i in $(seq 1 30); do
-    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml 2>/dev/null || true
+    # Delete first: /sdcard survives uninstall, so a failed dump would leave the
+    # previous run's XML in place and we would match a screen from minutes ago.
+    "$ADB" shell rm -f /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml >/dev/null 2>&1 || true
     UI_CHECK=$("$ADB" shell cat /sdcard/ui_dump.xml 2>/dev/null || true)
-    # Flutter home screen has the app title "Meow" or Chinese equivalent
-    if echo "$UI_CHECK" | grep -qiE 'text="Meow"|text=".*断开.*"|text=".*连接.*"'; then
-        FLUTTER_READY=true
-        info "  Flutter UI loaded (attempt $i)"
+    if echo "$UI_CHECK" | grep -q 'resource-id="home_root"'; then
+        UI_READY=true
+        info "  Compose UI loaded (attempt $i)"
+        break
+    fi
+    if echo "$UI_CHECK" | grep -q 'package="com.android.vpndialogs"'; then
+        UI_READY=true
+        info "  VPN consent dialog is up — app launched (attempt $i)"
         break
     fi
     sleep 1
 done
-if [[ "$FLUTTER_READY" != "true" ]]; then
-    info "  WARNING: Flutter UI not detected after 30s, proceeding anyway"
+if [[ "$UI_READY" != "true" ]]; then
+    info "  WARNING: app UI not detected after 30s, proceeding anyway"
 fi
 screenshot "02_app_launched"
 
@@ -290,8 +320,12 @@ VPN_ACCEPTED=false
 # Helper: dump UI and find the VPN consent dialog's positive button.
 # Taps it and returns 0. Returns 1 if no suitable button found.
 try_dismiss_vpn_dialog() {
-    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml 2>/dev/null || true
-    "$ADB" pull /sdcard/ui_dump.xml /tmp/ui_dump.xml 2>/dev/null || true
+    # Clear both copies first. Neither /sdcard nor /tmp is cleaned between runs,
+    # so a failed dump would otherwise leave us deciding based on a stale screen.
+    "$ADB" shell rm -f /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    rm -f /tmp/ui_dump.xml
+    "$ADB" shell uiautomator dump /sdcard/ui_dump.xml >/dev/null 2>&1 || true
+    "$ADB" pull /sdcard/ui_dump.xml /tmp/ui_dump.xml >/dev/null 2>&1 || true
     local ui_xml
     ui_xml=$(cat /tmp/ui_dump.xml 2>/dev/null || true)
 
@@ -320,7 +354,7 @@ try_dismiss_vpn_dialog() {
         ok_line=$(echo "$ui_xml" | tr '>' '\n' | grep 'package="com.android.vpndialogs"' | grep -iE 'text="(OK|Ok|ok|Allow|ALLOW|Got it|GOT IT|Okay|OKAY|确定|允许)"' | head -1 || true)
     fi
 
-    # No Strategy 3 — tapping arbitrary buttons is dangerous (can hit Flutter nav bar)
+    # No Strategy 3 — tapping arbitrary buttons is dangerous (can hit the app's own nav bar)
 
     if [[ -n "$ok_line" ]]; then
         tap_bounds "$ok_line" "VPN dialog button"
@@ -376,7 +410,18 @@ fi
 # Step 8: Verify connectivity
 ensure_emulator
 info "Step 8: Verifying VPN connection..."
-sleep 8
+# Wait for the tunnel rather than sleeping a fixed amount. Bringing up the
+# engine can take well over 30s on a cold or heavily loaded emulator, and a
+# blind sleep turns that into a spurious "tun0 not found".
+info "  Waiting for tun0 (up to ${TUN_WAIT_SECS:-60}s)..."
+for i in $(seq 1 "${TUN_WAIT_SECS:-60}"); do
+    if "$ADB" shell ip addr show tun0 2>/dev/null | grep -q "inet "; then
+        info "  tun0 is up after ${i}s"
+        break
+    fi
+    sleep 1
+done
+sleep 3   # let the first flows settle once the interface exists
 screenshot "05_vpn_status"
 
 PASS=0

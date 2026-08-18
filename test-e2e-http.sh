@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS daily_traffic (
     date TEXT NOT NULL, tx INTEGER NOT NULL, rx INTEGER NOT NULL, PRIMARY KEY(date)
 );
 INSERT INTO clash_profile (name, url, yaml_content, selected, last_updated, tx, rx, selected_proxy, yaml_backup)
-VALUES ('HTTP Proxy Test', 'http://$PROXY_HOST_FROM_EMU:9/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(date +%s), 0, 0, '', '');
+-- last_updated is epoch MILLIseconds, matching System.currentTimeMillis().
+VALUES ('HTTP Proxy Test', 'http://$PROXY_HOST_FROM_EMU:9/config.yaml', '$(echo "$SUB_YAML" | sed "s/'/''/g")', 1, $(( $(date +%s) * 1000 )), 0, 0, '', '');
 DBEOF
 
 "$ADB" push /tmp/meow-http.db /data/local/tmp/meow.db >/dev/null

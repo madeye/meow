@@ -1,4 +1,137 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Meow</string>
+
+    <!-- Tabs -->
+    <string name="tab_home">首页</string>
+    <string name="tab_subscribe">订阅</string>
+    <string name="tab_traffic">流量</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- Common -->
+    <string name="common_cancel">取消</string>
+    <string name="common_save">保存</string>
+    <string name="common_add">添加</string>
+    <string name="common_delete">删除</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_select">选择</string>
+    <string name="common_refresh">刷新</string>
+    <string name="common_retry">重试</string>
+    <string name="common_discard">放弃</string>
+    <string name="common_back">返回</string>
+
+    <!-- Home -->
+    <string name="home_not_connected">未连接</string>
+    <string name="home_connecting">连接中…</string>
+    <string name="home_connected">已连接</string>
+    <string name="home_disconnecting">断开中…</string>
+    <string name="home_disconnected">已断开</string>
+    <string name="home_no_subscription_hint">未选择订阅\n请前往订阅页面添加</string>
+    <string name="home_upload">上传</string>
+    <string name="home_download">下载</string>
+    <string name="home_vpn_toggle">开关 VPN</string>
+
+    <!-- Proxy groups -->
+    <string name="proxy_groups_title">代理分组</string>
+    <string name="proxy_no_groups">未找到代理分组。\n连接 VPN 以加载分组。</string>
+    <string name="proxy_url_test_all">全部测速</string>
+    <string name="proxy_delay_ms">%1$d 毫秒</string>
+
+    <!-- Subscriptions -->
+    <string name="subs_title">订阅管理</string>
+    <string name="subs_none">暂无订阅</string>
+    <string name="subs_add">添加订阅</string>
+    <string name="subs_edit">编辑订阅</string>
+    <string name="subs_delete_confirm">确定删除 \"%1$s\"？</string>
+    <string name="subs_name">名称</string>
+    <string name="subs_url">订阅链接</string>
+    <string name="subs_paste">从剪贴板粘贴</string>
+    <string name="subs_clipboard_empty">剪贴板为空</string>
+    <string name="subs_add_from_url">从链接添加</string>
+    <string name="subs_import_from_file">从文件导入</string>
+    <string name="subs_export">导出</string>
+    <string name="subs_edit_yaml">编辑 YAML</string>
+    <string name="subs_updated">%1$s 已更新</string>
+    <string name="subs_last_updated">更新于 %1$s</string>
+    <string name="subs_refresh_failed">刷新失败：%1$s</string>
+    <string name="subs_imported">已导入 \"%1$s\"</string>
+    <string name="subs_import_failed">导入失败：%1$s</string>
+    <string name="subs_export_saved">配置已导出</string>
+    <string name="subs_export_failed">导出失败：%1$s</string>
+
+    <!-- YAML editor -->
+    <string name="yaml_valid">配置有效</string>
+    <string name="yaml_config_invalid">配置无效：%1$s</string>
+    <string name="yaml_revert">还原</string>
+    <string name="yaml_revert_confirm">还原为最近下载的版本？</string>
+    <string name="yaml_discard_changes">放弃未保存的更改？</string>
+    <string name="yaml_saved">配置已保存</string>
+    <string name="yaml_reverted">已还原</string>
+
+    <!-- Traffic -->
+    <string name="traffic_title">流量</string>
+    <string name="traffic_data_usage">流量统计</string>
+    <string name="traffic_today">今日</string>
+    <string name="traffic_this_month">本月</string>
+    <string name="traffic_daily_history">最近 30 天</string>
+    <string name="traffic_no_history">暂无流量记录</string>
+    <string name="traffic_tap_bar_hint">点击柱状图查看详情</string>
+    <string name="traffic_current_session">当前会话</string>
+    <string name="traffic_speed">速度</string>
+    <string name="traffic_total">合计：%1$s</string>
+    <string name="traffic_collecting">正在收集数据…</string>
+    <string name="traffic_connect_to_see">连接 VPN 查看流量</string>
+    <string name="traffic_upload">上传</string>
+    <string name="traffic_download">下载</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_general">通用</string>
+    <string name="settings_version">版本</string>
+    <string name="settings_engine">引擎</string>
+    <string name="settings_engine_section">引擎</string>
+    <string name="settings_engine_offline">连接 VPN 后可用</string>
+    <string name="settings_network">网络</string>
+    <string name="settings_dns_server">DNS 服务器</string>
+    <string name="settings_dns_builtin">通过隧道走纯 TCP</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_source_code">源代码</string>
+    <string name="settings_source_url">github.com/madeye/meow</string>
+    <string name="settings_version_unavailable">不可用</string>
+
+    <!-- Logs -->
+    <string name="logs_title">日志</string>
+    <string name="logs_empty">暂无日志</string>
+    <string name="logs_auto_scroll">自动滚动</string>
+
+    <!-- Connections -->
+    <string name="connections_title">连接</string>
+    <string name="connections_empty">无活跃连接</string>
+    <string name="connections_close_all">关闭全部</string>
+    <string name="connections_close_all_confirm">关闭所有活跃连接？</string>
+    <string name="connections_filter">按主机过滤…</string>
+
+    <!-- Rules -->
+    <string name="rules_title">规则</string>
+    <string name="rules_empty">未找到规则。\n连接 VPN 以加载规则。</string>
+    <string name="rules_filter">按类型、载荷或代理过滤…</string>
+    <string name="rules_load_error">加载规则失败</string>
+    <plurals name="rules_count">
+        <item quantity="other">%1$d 条规则</item>
+    </plurals>
+
+    <!-- Per-app proxy -->
+    <string name="perapp_title">分应用代理</string>
+    <string name="perapp_desc">选择哪些应用使用 VPN</string>
+    <string name="perapp_mode_proxy">仅代理选中</string>
+    <string name="perapp_mode_bypass">绕过选中</string>
+    <string name="perapp_search">搜索应用…</string>
+    <string name="perapp_show_system">显示系统应用</string>
+    <string name="perapp_select_all">全选</string>
+    <string name="perapp_deselect_all">取消全选</string>
+    <string name="perapp_disabled_hint">未选择应用时不生效</string>
+    <string name="perapp_restart_required">重新连接 VPN 以应用更改</string>
+    <plurals name="perapp_selected">
+        <item quantity="other">已选 %1$d 个</item>
+    </plurals>
 </resources>

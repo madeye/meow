@@ -1,6 +1,7 @@
 package io.github.madeye.meow.database
 
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "clash_profile")
 data class ClashProfile(
@@ -23,6 +24,22 @@ interface ProfileDao {
 
     @Query("SELECT * FROM clash_profile WHERE selected = 1 LIMIT 1")
     fun getSelected(): ClashProfile?
+
+    /**
+     * Observable variants for the Compose UI, so a subscription edit propagates
+     * to the home screen without an explicit "profile changed" signal.
+     *
+     * Room's invalidation tracker is per-process. That is safe today because
+     * every write happens in the UI process and `:vpn` only reads; if the
+     * service ever starts writing (e.g. [updateTraffic]), the database must be
+     * built with `enableMultiInstanceInvalidation()` or these flows will go
+     * stale without any visible error.
+     */
+    @Query("SELECT * FROM clash_profile ORDER BY id ASC")
+    fun observeAll(): Flow<List<ClashProfile>>
+
+    @Query("SELECT * FROM clash_profile WHERE selected = 1 LIMIT 1")
+    fun observeSelected(): Flow<ClashProfile?>
 
     @Query("SELECT * FROM clash_profile WHERE id = :id")
     fun getById(id: Long): ClashProfile?

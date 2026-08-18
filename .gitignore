@@ -22,15 +22,6 @@ core/src/main/rust/meow-android-ffi/target/
 *.keystore
 captures/
 
-# Flutter
-flutter_module/.android/
-flutter_module/.ios/
-flutter_module/.dart_tool/
-flutter_module/.packages
-flutter_module/build/
-flutter_module/.flutter-plugins
-flutter_module/.flutter-plugins-dependencies
-
 # OS
 .DS_Store
 Thumbs.db

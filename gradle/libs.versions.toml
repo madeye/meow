@@ -1,4 +1,5 @@
 [versions]
+kotlin = "2.2.0"
 coroutines = "1.10.2"
 lifecycle = "2.10.0"
 sora-editor = "0.23.6"
@@ -7,6 +8,14 @@ work = "2.11.0"
 firebase-bom = "33.14.0"
 firebase-crashlytics-gradle = "3.0.4"
 google-services = "4.4.3"
+# Compose 1.11+ (BOM 2026.03.01 and newer) requires AGP 9.1 / compileSdk 37.
+# This project is on AGP 8.13.2 / compileSdk 36, so the BOM is pinned to the
+# newest release that still supports it. Bump together with AGP, not alone.
+compose-bom = "2026.01.01"
+activity-compose = "1.13.0"
+navigation-compose = "2.9.8"
+okhttp = "4.12.0"
+serialization-json = "1.11.0"
 
 [libraries]
 android-gradle = "com.android.tools.build:gradle:8.13.2"
@@ -22,6 +31,28 @@ androidx-test-runner = "androidx.test:runner:1.7.0"
 androidx-work-multiprocess = { module = "androidx.work:work-multiprocess", version.ref = "work" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
+
+# Compose — versions come from the BOM except where noted.
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+
+# Engine REST/WebSocket client (port of flutter_module/lib/services/meow_api.dart).
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
@@ -38,3 +69,7 @@ timber = "com.jakewharton.timber:timber:5.0.1"
 
 [plugins]
 ksp = "com.google.devtools.ksp:2.3.4"
+# Kotlin 2.x drives the Compose compiler through this plugin; its version must
+# track `kotlin` exactly (the old kotlinCompilerExtensionVersion knob is gone).
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
