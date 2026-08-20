@@ -54,6 +54,12 @@ android {
     val keystorePath = prop("KEYSTORE_PATH")
     val keystoreFile = keystorePath?.let { File(it) }
 
+    // Placeholder google-services.json (see AGENTS.md): do not upload Crashlytics
+    // mapping files so release builds succeed without a real Firebase project.
+    firebaseCrashlytics {
+        mappingFileUploadEnabled = false
+    }
+
     if (keystoreFile != null && keystoreFile.exists()) {
         signingConfigs {
             create("release") {
