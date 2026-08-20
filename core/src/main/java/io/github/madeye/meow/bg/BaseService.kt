@@ -54,7 +54,24 @@ object BaseService {
     }
 
     class Binder(private var data: Data? = null) : IMihomoService.Stub(), CoroutineScope, AutoCloseable {
-        private val callbacks = RemoteCallbackList<IMihomoServiceCallback>()
+        // RemoteCallbackList drops dead binders automatically; the parallel
+        // bandwidthListeners map must mirror that. If a binder that died with
+        // the app process stayed in the map, the 1 Hz traffic looper would
+        // keep ticking for it and a later (re)registering listener would be
+        // silently skipped by the isEmpty() guard — freezing traffic stats
+        // until the service itself is destroyed.
+        private val callbacks = object : RemoteCallbackList<IMihomoServiceCallback>() {
+            override fun onCallbackDied(callback: IMihomoServiceCallback) {
+                launch {
+                    if (bandwidthListeners.remove(callback.asBinder()) != null &&
+                        bandwidthListeners.isEmpty()
+                    ) {
+                        looper?.cancel()
+                        looper = null
+                    }
+                }
+            }
+        }
         private val bandwidthListeners = mutableMapOf<IBinder, Long>()
         override val coroutineContext = Dispatchers.Main.immediate + Job()
         private var looper: Job? = null
@@ -91,7 +108,12 @@ object BaseService {
 
         override fun startListeningForBandwidth(cb: IMihomoServiceCallback, timeout: Long) {
             launch {
-                if (bandwidthListeners.isEmpty() && bandwidthListeners.put(cb.asBinder(), timeout) == null) {
+                // Always (re)register the listener — the previous guard only
+                // added it when the map was empty, so after an app-process
+                // restart the new binder was silently ignored while the stale
+                // dead entry kept the looper running for nobody.
+                bandwidthListeners[cb.asBinder()] = timeout
+                if (looper?.isActive != true) {
                     looper = launch { loop() }
                 }
             }

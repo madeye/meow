@@ -151,6 +151,17 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         analytics.logEvent("profile_select") {}
                         PrivateDatabase.profileDao.deselectAll()
                         PrivateDatabase.profileDao.select(id)
+                        // If the VPN is running it still holds the previous
+                        // profile's engine. Reload in place (forceLoad ->
+                        // stopRunner(true) -> restart) so the new subscription
+                        // takes effect and the traffic stats rebase cleanly on
+                        // the new engine session.
+                        if (state == BaseService.State.Connected) {
+                            sendBroadcast(
+                                Intent(io.github.madeye.meow.utils.Action.RELOAD)
+                                    .setPackage(packageName)
+                            )
+                        }
                         result.success(null)
                     }
                     "saveSelectedProxy" -> {
@@ -531,6 +542,15 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
     }
 
     override fun trafficUpdated(profileId: Long, stats: TrafficStats) {
+        // The engine's byte counters restart from zero on every engine
+        // (re)start — e.g. switching subscription and reconnecting. Rebase the
+        // delta baseline when a regression is observed so daily persistence
+        // survives even if the Connected state callback was missed (app
+        // process dead at reconnect, binder restart, etc.).
+        if (stats.txTotal < lastTrafficTx || stats.rxTotal < lastTrafficRx) {
+            lastTrafficTx = 0L
+            lastTrafficRx = 0L
+        }
         // Persist daily traffic
         val deltaTx = if (lastTrafficTx > 0) stats.txTotal - lastTrafficTx else 0L
         val deltaRx = if (lastTrafficRx > 0) stats.rxTotal - lastTrafficRx else 0L
