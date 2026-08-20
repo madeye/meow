@@ -120,6 +120,15 @@ class VpnChannel {
     return Map<String, dynamic>.from(map);
   }
 
+  /// Scan [packages] (the screen's current filtered app list) for China
+  /// (domestic) apps via package-name and component-name prefix matching
+  /// (same heuristics as sing-box Android). Returns the matching package
+  /// names.
+  Future<List<String>> scanChinaApps(List<String> packages) async {
+    final list = await _method.invokeMethod<List>('scanChinaApps', {'packages': packages});
+    return (list ?? []).cast<String>();
+  }
+
   Future<void> setPerAppConfig(String mode, List<String> packages) =>
       _method.invokeMethod('setPerAppConfig', {
         'mode': mode,

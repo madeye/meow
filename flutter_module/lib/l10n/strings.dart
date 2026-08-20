@@ -170,6 +170,12 @@ class S {
   String get perAppHideSystem => 'Hide system apps';
   String get perAppSelectAll => 'Select All';
   String get perAppDeselectAll => 'Deselect All';
+  String get perAppScanChina => 'Scan China Apps';
+  String get perAppScanning => 'Scanning…';
+  String perAppChinaSelected(int count) => 'Auto-selected $count China app(s)';
+  String get perAppChinaAlreadySelected => 'China apps already selected';
+  String get perAppNoChinaApps => 'No China apps found';
+  String get perAppScanFailed => 'Scan failed';
   String perAppSelected(int count) => '$count selected';
   String get perAppDisabledHint => 'Disabled when no apps selected';
   String get perAppRestartRequired => 'Reconnect VPN to apply changes';
@@ -469,6 +475,18 @@ class _Zh extends S {
   String get perAppSelectAll => '全选';
   @override
   String get perAppDeselectAll => '取消全选';
+  @override
+  String get perAppScanChina => '扫描中国应用';
+  @override
+  String get perAppScanning => '扫描中…';
+  @override
+  String perAppChinaSelected(int count) => '已自动选择 $count 个国内应用';
+  @override
+  String get perAppChinaAlreadySelected => '国内应用均已在选中列表';
+  @override
+  String get perAppNoChinaApps => '未发现国内应用';
+  @override
+  String get perAppScanFailed => '扫描失败';
   @override
   String perAppSelected(int count) => '已选 $count 个';
   @override

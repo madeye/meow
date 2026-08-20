@@ -19,6 +19,7 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
   String _searchQuery = '';
   bool _showSystemApps = false;
   bool _loading = true;
+  bool _scanning = false;
 
   @override
   void initState() {
@@ -46,6 +47,51 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  /// Port of sing-box Android's "扫描中国应用": matches the screen's current
+  /// filtered app list by package/component name prefixes and auto-selects
+  /// the found ones.
+  Future<void> _scanChinaApps() async {
+    if (_scanning) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final s = S.of(context);
+    // Snapshot the currently visible (filtered) list; sing-box scans only
+    // the current filter view too.
+    final visiblePackages =
+        _filteredApps.map((a) => a['packageName'] as String).toList();
+    setState(() => _scanning = true);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(s.perAppScanning),
+        duration: const Duration(seconds: 10),
+      ),
+    );
+    try {
+      final matched = await VpnChannel.instance.scanChinaApps(visiblePackages);
+      if (!mounted) return;
+      final before = _selectedPackages.length;
+      setState(() => _selectedPackages.addAll(matched));
+      final added = _selectedPackages.length - before;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            matched.isEmpty
+                ? s.perAppNoChinaApps
+                : added == 0
+                    ? s.perAppChinaAlreadySelected
+                    : s.perAppChinaSelected(added),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(s.perAppScanFailed)));
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
   List<Map<String, dynamic>> get _filteredApps {
     return _apps.where((app) {
       if (!_showSystemApps && app['isSystem'] == true) return false;
@@ -68,6 +114,10 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
+              if (value == 'scanChina') {
+                _scanChinaApps();
+                return;
+              }
               setState(() {
                 if (value == 'showSystem') {
                   _showSystemApps = !_showSystemApps;
@@ -85,6 +135,11 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
               ),
               PopupMenuItem(value: 'selectAll', child: Text(s.perAppSelectAll)),
               PopupMenuItem(value: 'deselectAll', child: Text(s.perAppDeselectAll)),
+              PopupMenuItem(
+                value: 'scanChina',
+                enabled: !_scanning,
+                child: Text(s.perAppScanChina),
+              ),
             ],
           ),
           IconButton(

@@ -1,5 +1,6 @@
 package io.github.madeye.meow
 
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
@@ -35,6 +36,66 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
         private const val REQUEST_VPN = 1
         private const val REQUEST_IMPORT_CONFIG = 2
         private const val REQUEST_EXPORT_CONFIG = 3
+
+        // China-app heuristics ported from sing-box Android's
+        // PerAppProxyScanner ("扫描中国应用"). Only the packages passed in
+        // (the screen's current filtered list) are considered. A package is
+        // domestic when its package name or any of its declared component
+        // names starts with one of these prefixes (unless it is in the skip
+        // list). The sing-box dex-class scan heuristic is intentionally
+        // omitted: it needs a dex parser and reads every app's APK, which is
+        // too slow for this screen; prefix + component matching already
+        // catches the common domestic apps.
+        private val chinaAppPrefixList = listOf(
+            "com.tencent", "com.alibaba", "com.umeng", "com.qihoo", "com.ali",
+            "com.alipay", "com.amap", "com.sina", "com.weibo", "com.vivo",
+            "com.xiaomi", "com.huawei", "com.taobao", "com.secneo", "s.h.e.l.l",
+            "com.stub", "com.kiwisec", "com.secshell", "com.wrapper",
+            "cn.securitystack", "com.mogosec", "com.secoen", "com.netease",
+            "com.mx", "com.qq.e", "com.baidu", "com.bytedance", "com.bugly",
+            "com.miui", "com.oppo", "com.coloros", "com.iqoo", "com.meizu",
+            "com.gionee", "cn.nubia", "com.oplus", "andes.oplus", "com.unionpay",
+            "cn.wps",
+        )
+        private val chinaAppSkipPrefixList = listOf(
+            "com.google", "com.android.chrome", "com.android.vending",
+            "com.microsoft", "com.apple", "com.zhiliaoapp.musically",
+            "com.android.providers.downloads",
+        )
+        private val chinaAppRegex by lazy {
+            Regex("(" + chinaAppPrefixList.joinToString("|").replace(".", "\\.") + ").*")
+        }
+
+        fun scanChinaApps(context: Context, packages: List<String>): List<String> {
+            val pm = context.packageManager
+            val flags = android.content.pm.PackageManager.GET_ACTIVITIES or
+                android.content.pm.PackageManager.GET_SERVICES or
+                android.content.pm.PackageManager.GET_RECEIVERS or
+                android.content.pm.PackageManager.GET_PROVIDERS
+            val matched = mutableListOf<String>()
+            for (pkg in packages) {
+                if (pkg == context.packageName) continue
+                if (chinaAppSkipPrefixList.any { pkg == it || pkg.startsWith("$it.") }) continue
+                val info = try {
+                    pm.getPackageInfo(pkg, flags)
+                } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                    continue
+                }
+                if (chinaAppRegex.matches(pkg)) {
+                    matched.add(pkg)
+                    continue
+                }
+                val componentNames = mutableListOf<String>()
+                info.services?.forEach { it.name?.let(componentNames::add) }
+                info.activities?.forEach { it.name?.let(componentNames::add) }
+                info.receivers?.forEach { it.name?.let(componentNames::add) }
+                info.providers?.forEach { it.name?.let(componentNames::add) }
+                if (componentNames.any { chinaAppRegex.matches(it) }) {
+                    matched.add(pkg)
+                }
+            }
+            return matched
+        }
     }
 
     private val analytics by lazy { FirebaseAnalytics.getInstance(this) }
@@ -344,6 +405,16 @@ class MainActivity : FlutterActivity(), MihomoConnection.Callback {
                         DataStore.perAppMode = mode
                         DataStore.perAppPackages = packages
                         result.success(null)
+                    }
+                    "scanChinaApps" -> {
+                        analytics.logEvent("per_app_scan_china") {}
+                        val packages = call.argument<List<String>>("packages") ?: emptyList()
+                        scope.launch {
+                            val matched = withContext(Dispatchers.IO) {
+                                scanChinaApps(this@MainActivity, packages)
+                            }
+                            result.success(matched)
+                        }
                     }
                     "getNetworkPrefs" -> {
                         result.success(mapOf(
