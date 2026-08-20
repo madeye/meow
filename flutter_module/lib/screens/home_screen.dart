@@ -243,56 +243,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // App bar with switch
           SliverAppBar(
             pinned: true,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(s.appName),
-                if (_profile != null && isOn)
-                  Text(
-                    _profile!.name,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-              ],
-            ),
+            title: Text(s.appName),
             actions: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: isTransitioning
-                    ? const Padding(
-                        key: ValueKey('spinner'),
-                        padding: EdgeInsets.only(right: 4),
-                        child: SizedBox(
-                          width: 52,
-                          height: 32,
-                          child: Center(
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                        ),
-                      )
-                    : Padding(
-                        key: const ValueKey('switch'),
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Switch(
-                          value: isOn,
-                          onChanged: _state.canToggle && !_toggling
-                              ? _toggle
-                              : null,
-                        ),
-                      ),
+              // The switch stays in place while the VPN connects/disconnects;
+              // during the transition it is simply disabled (grayed out) and
+              // the loading spinner is shown in the status card below.
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Switch(
+                  value: isOn,
+                  onChanged: _state.canToggle && !_toggling ? _toggle : null,
+                ),
               ),
             ],
           ),
 
           // Status card
-          SliverToBoxAdapter(child: _buildStatusCard(isOn)),
+          SliverToBoxAdapter(
+            child: _buildStatusCard(isOn, loading: isTransitioning),
+          ),
 
           // Traffic row
           if (isOn)
@@ -397,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildStatusCard(bool isOn) {
+  Widget _buildStatusCard(bool isOn, {bool loading = false}) {
     final s = S.of(context);
     final theme = Theme.of(context);
     final meow = theme.extension<MeowColors>()!;
@@ -417,6 +386,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final color = isOn ? meow.connected : theme.colorScheme.onSurfaceVariant;
+    // While the VPN connects/disconnects, highlight the status badge with the
+    // brand primary color so the loading spinner is clearly visible.
+    final accent = loading ? theme.colorScheme.primary : color;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Card(
@@ -430,18 +402,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: color.withAlpha(30),
-                  border: Border.all(color: color, width: 2),
+                  color: accent.withAlpha(30),
+                  border: Border.all(color: accent, width: 2),
                 ),
-                child: Icon(
-                  isOn ? Icons.vpn_key : Icons.vpn_key_off,
-                  color: color,
-                  size: 24,
-                ),
+                child: loading
+                    ? Center(
+                        // Center gives the spinner loose constraints so it
+                        // renders at its natural 36px inside the 48px circle
+                        // instead of being stretched to fill it.
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3.5,
+                          color: accent,
+                        ),
+                      )
+                    : Icon(
+                        isOn ? Icons.vpn_key : Icons.vpn_key_off,
+                        color: color,
+                        size: 24,
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -449,7 +432,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: color,
+                        color: accent,
+                        height: 1.3,
+                      ),
+                      // Force a fixed strut line height: mixed CJK/ASCII
+                      // strings (e.g. "连接中...") can report taller font
+                      // metrics than pure-CJK ones at enlarged system font
+                      // scales, which would make the card height jump when
+                      // the loading state toggles.
+                      strutStyle: const StrutStyle(
+                        fontSize: 16,
+                        height: 1.3,
+                        forceStrutHeight: true,
                       ),
                     ),
                     if (_profile != null)
@@ -458,6 +452,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          height: 1.3,
+                        ),
+                        strutStyle: const StrutStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          forceStrutHeight: true,
                         ),
                       ),
                   ],
