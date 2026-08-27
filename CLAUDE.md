@@ -124,7 +124,7 @@ engine's own controller API on loopback, which crosses into `:vpn`.
 ```
 mobile → core (Compose lives only in :mobile; :core stays UI-free)
 core → rust (via rust-android-gradle cargo plugin)
-meow-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.20.1)
+meow-android-ffi → meow-{tunnel,config,dns,api,common,transport,proxy} (git dep, tag-pinned, currently v0.20.2)
                    → lwip (patched madeye/lwip rev), jni, android_logger, redb, mimalloc
 ```
 
